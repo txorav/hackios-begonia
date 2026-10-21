@@ -54,7 +54,7 @@ cp xnuloader/xnuloader.elf build/xnuloader_qemu.elf
 make -C xnuloader clean >/dev/null 2>&1 || true
 
 echo "== booting under qemu-system-aarch64 -M virt (TCG) =="
-timeout 45 qemu-system-aarch64 \
+timeout 8 qemu-system-aarch64 \
 	-M virt -cpu cortex-a57 -smp 1 -m 2048 \
 	-nic none \
 	-kernel build/xnuloader_qemu.elf \
