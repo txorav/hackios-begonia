@@ -5,7 +5,7 @@
  * ROLE IN THE lx STACK
  * ---------------------------------------------------------------------------
  * Linux drivers use pr_info()/dev_info()/printk().  The shim keeps those
- * *names* so the mirrored (clean-room) driver code in drivers/mt6785/*.c is
+ * *names* so the mirrored (clean-room) driver code in drivers/mt6785 is
  * diffable against its Linux reference, but the implementation is routed
  * through lxkit:
  *

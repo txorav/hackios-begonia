@@ -22,10 +22,25 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-CC_AR=$(which aarch64-none-elf-gcc aarch64-linux-gnu-gcc 2>/dev/null | head -1)
+# cross-toolchain detection without deprecated `which`; prints PATH
+# diagnostics when missing so CI failures are explainable.
+find_cc() {
+	for c in aarch64-none-elf-gcc aarch64-linux-gnu-gcc aarch64-linux-gnu-gcc-14 aarch64-linux-gnu-gcc-13; do
+		if command -v "$c" >/dev/null 2>&1; then
+			command -v "$c"
+			return 0
+		fi
+	done
+	return 1
+}
+
+CC_AR=$(find_cc || true)
 if [ -z "${CC_AR}" ]; then
 	echo "error: no aarch64 cross gcc on PATH (aarch64-none-elf / aarch64-linux-gnu)" >&2
-	echo "       install with: scripts/setup_host.sh (or: sudo apt-get install gcc-aarch64-linux-gnu)" >&2
+	echo "PATH=${PATH}" >&2
+	echo "-- aarch64 toolchains present in /usr/bin:" >&2
+	ls /usr/bin 2>/dev/null | grep -i aarch64 | head >&2 || true
+	echo "install with: scripts/setup_host.sh (or: sudo apt-get install gcc-aarch64-linux-gnu)" >&2
 	exit 1
 fi
 

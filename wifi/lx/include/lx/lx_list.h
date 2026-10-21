@@ -96,6 +96,18 @@ static inline int lx_list_empty(const struct lx_list_head *head)
 	    &(iter)->member != (head); \
 	    (iter) = lx_list_entry((iter)->member.next, type, member))
 
+/* Iterate entries with a safe `next` pointer (removal from inside ok).
+ * NOTE: items being REMOVED in the body are unlinked with lx_list_del()
+ * (which restores self-links, making removal idempotent). */
+#define lx_list_for_each_entry_safe(iter, tmp, head, type, member) \
+	for ((iter) = lx_list_entry((head)->next, type, member), \
+	    (tmp) = ((&((iter)->member) != (head)) \
+	        ? lx_list_entry((iter)->member.next, type, member) : (iter)); \
+	    (&((iter)->member) != (head)); \
+	    (iter) = (tmp), \
+	    (tmp) = ((&((iter)->member) != (head)) \
+	        ? lx_list_entry((iter)->member.next, type, member) : (iter)))
+
 /* Reverse iteration (for msdc logic that drains a queue from the oldest) */
 #define lx_list_for_each_entry_reverse(iter, head, type, member) \
 	for ((iter) = lx_list_entry((head)->prev, type, member); \

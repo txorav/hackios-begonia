@@ -82,6 +82,13 @@ typedef uint64_t firehose_tracepoint_id_t;
 typedef struct firehose_tracepoint_id_u {
 	uint64_t ftid_value;
 } firehose_tracepoint_id_u;
+
+/* Standalone context ONLY: in a real kernel build the in-tree type is
+ * `typedef union firehose_buffer_u *firehose_buffer_t;`
+ * (libkern/firehose/firehose_types_private.h:329) - redefining it here would
+ * be a typedef clash, so the type is only minted when in-tree types are
+ * absent. */
+typedef void *firehose_buffer_t;
 #endif /* types in tree / stand-alone */
 
 /* ---------- the buffer driver surface (the part that was missing) -------- */
@@ -92,7 +99,6 @@ typedef struct firehose_tracepoint_id_u {
  * payload).  logd maps it via LOGBUFFERMAP (libkern/firehose/ioctl_private.h)
  * and reconstitutes it with knowledge of the driver version.
  */
-typedef void *firehose_buffer_t;
 
 /*
  * 16-byte record log.c writes into a tracepoint's public data when the
@@ -137,7 +143,7 @@ extern uint8_t __firehose_num_kernel_io_pages;
  */
 int  __firehose_kernel_configuration_valid(uint8_t chunk_count,
      uint8_t io_pages);
-void *__firehose_buffer_create(size_t *size);
+firehose_buffer_t __firehose_buffer_create(size_t *size);
 bool __firehose_merge_updates(firehose_push_reply_t update);
 firehose_tracepoint_t __firehose_buffer_tracepoint_reserve(uint64_t stamp,
      firehose_stream_t stream, uint16_t pub_data_size,

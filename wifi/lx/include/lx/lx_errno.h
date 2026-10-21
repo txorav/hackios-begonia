@@ -49,7 +49,7 @@ extern "C" {
 
 /*
  * Map a Linux-style failure (negative errno) to an IOReturn.
- * lxkit consumers (kexts/*) must use this at the boundary — see
+ * lxkit consumer kexts must use this at the boundary — see
  * lxkit_api.h, struct lxkit_storage_client::ops->on_request_done().
  */
 static inline unsigned int

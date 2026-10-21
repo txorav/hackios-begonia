@@ -54,17 +54,6 @@ extern "C" {
 
 struct lx_context;      /* lxkit_api.h */
 
-#ifndef LX_IOSPACE_H
-#define LX_IOSPACE_H
-
-#include "lx_types.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-struct lx_context;      /* lxkit_api.h */
-
 /*
  * ---------------------------------------------------------------------------
  * The MMIO token: `struct lx_iomap`:

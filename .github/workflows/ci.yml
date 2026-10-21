@@ -16,10 +16,11 @@ jobs:
           gcc -std=gnu11 -O1 -Wall -Wextra -o /tmp/xldr_test \
             xnuloader/test_host.c xnuloader/adt.c xnuloader/fdt.c xnuloader/string.c
           /tmp/xldr_test
-      - name: Python syntax checks
+      - name: Python syntax checks (repo tooling only; vendored xnu/lldbmacros
+          py2 sources are excluded)
         run: |
           python3 -m py_compile mkxnuimg.py
-          python3 -m py_compile $(git ls-files '*.py')
+          python3 -m py_compile userland/*.py
       - name: Shell syntax checks
         run: |
           set -e
