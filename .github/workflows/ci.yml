@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: FDT/ADT loader unit tests (host gcc)
+        run: |
+          gcc -std=gnu11 -O1 -Wall -Wextra -o /tmp/xldr_test \
+            xnuloader/test_host.c xnuloader/adt.c xnuloader/fdt.c xnuloader/string.c
+          /tmp/xldr_test
+      - name: Python syntax checks
+        run: |
+          python3 -m py_compile mkxnuimg.py
+          python3 -m py_compile $(git ls-files '*.py')
+      - name: Shell syntax checks
+        run: |
+          set -e
+          for f in $(git ls-files '*.sh'); do bash -n "$f"; done
+          echo "all shell scripts parse"
+
+  loader-aarch64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install aarch64 cross toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+      - name: Build xnuloader (device layout)
+        run: make xnuloader
+      - name: M1 packer smoke (placeholder kernel)
+        run: |
+          mkdir -p build out
+          python3 - <<'PY'
+          import struct
+          # minimal arm64 Mach-O header (MH_EXECUTE, no load commands)
+          hdr = struct.pack('<IIIIIIii', 0xFEEDFACF, 0x0100000C, 0, 2, 0, 0, 0, 0)
+          open('build/placeholder.macho', 'wb').write(hdr + b'\x00' * 4096)
+          PY
+          python3 mkxnuimg.py --out out/boot.m1.img \
+            --loader out/xnuloader.bin --kernel build/placeholder.macho \
+            --cmdline "serial=3 -v"
+          ls -l out/boot.m1.img
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xnuloader-m1-image
+          path: |
+            out/xnuloader.bin
+            out/boot.m1.img
+
+  qemu-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cross toolchain + qemu
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu qemu-system-arm
+      - name: Boot the loader under qemu -M virt
+        run: bash qemu/run_qemu.sh
+      - name: Upload serial log
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-serial-log
+          path: qemu/out/qemu.log

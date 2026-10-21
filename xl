@@ -1,0 +1,153 @@
+#!/usr/bin/env python3
+"""
+xl — HackiOS begonia host utility.
+
+Streams kernels/logs over USB fastboot and serial (plan §2, `xl`), and drives
+the boot-log-reboot diagnose loop for the bring-up milestones.
+
+Subcommands:
+    xl boot <boot.img>            reboot into xnuloader (fastboot boot)
+    xl log [-d /dev/ttyUSBX]      tail the debug UART into out/console.log
+    xl panic                      pull last-panic RAMOOPS record via adb/TWRP?
+                                  (prints instructions when no device adb)
+    xl list                       enumerate fastboot/adb devices present
+    xl payload <dir>              summarize an unpacked payload (sizes)
+Requires: `fastboot` (or `adb`); optional `pyserial` for the log tail.
+"""
+import argparse
+import os
+import subprocess
+import sys
+import time
+
+OUT_DEFAULT = "out"
+
+
+def run(cmd, **kw):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, **kw)
+    except FileNotFoundError:
+        return None
+
+
+def die(msg, code=2):
+    print(f"xl: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def cmd_list(_args):
+    fb = run(["fastboot", "devices"])
+    adb = run(["adb", "devices"])
+    print("fastboot:", repr(fb.stdout) if fb else "fastboot not installed")
+    print("adb:     ", repr(adb.stdout) if adb else "adb not installed")
+
+
+def cmd_boot(args):
+    img = args.bootimg
+    if not os.path.isfile(img):
+        die(f"boot.img not found: {img}")
+    r = run(["fastboot", "devices"])
+    if r is None:
+        die("fastboot missing (apt install fastboot, or see tools/README.md)")
+    if not r.stdout.strip():
+        die("no fastboot device; put the phone in fastboot mode first")
+    print(f"booting {img} (fastboot boot — RAM only, nothing flashed)")
+    r = run(["fastboot", "boot", img])
+    if r and r.returncode == 0:
+        print("OK: image handed off to the kernel; watch the console with "
+              "`xl log` and capture cycles with `xl panic`.")
+        return 0
+    die(f"fastboot failed: {r.stderr if r else 'unknown'}", 2)
+
+
+def cmd_log(args):
+    tty = args.device or "/dev/ttyUSB0"
+    rate = args.baud
+    fn = args.out
+    try:
+        import serial            # pyserial only needed for this subcommand
+    except ImportError:
+        die("pyserial needed for `xl log` (pip3 install pyserial)")
+    if not os.path.exists(tty):
+        die(f"serial device not found: {tty}")
+    with serial.Serial(tty, rate, timeout=1) as ser, open(fn, "a") as f:
+        print(f"tailing {tty}@{rate} -> {fn} (Ctrl-C to stop)")
+        try:
+            while True:
+                data = ser.read(4096)
+                if data:
+                    sys.stdout.write(data.decode("utf-8", "replace"))
+                    sys.stdout.flush()
+                    f.write(data.decode("utf-8", "replace"))
+        except KeyboardInterrupt:
+            return 0
+
+
+def cmd_panic(_args):
+    adb = run(["adb", "devices"])
+    connected = adb and ("device" in adb.stdout)
+    if connected:
+        print("device up: pulling pstore/ramoops info")
+        os.makedirs(OUT_DEFAULT, exist_ok=True)
+        r = run(["adb", "shell", "cat /proc/pstore/console-ramoops > /data/local/tmp/p.0"])
+        if r:
+            p = run(["adb", "pull", "/data/local/tmp/p.0", f"{OUT_DEFAULT}/console-ramoops.txt"])
+            print(p.stdout if p else "(pull failed)")
+        return 0
+    print("no adb device. If the phone rebooted into TWRP after a watchdog "
+          "loop:\n"
+          "  1. adb shell mount -a? no — TWRP shell:\n"
+          "  2. dd if=/dev/mem skip=<0x47df0000/4096> of=/tmp/x  (rooted only)\n"
+          "  3. grep -a XLDRPANIC /tmp/x | head\n"
+          "otherwise re-enter fastboot and `xl boot out/boot.img` again.")
+
+
+def cmd_payload(args):
+    import struct
+    data = open(args.dir, "rb").read()
+    if data[:8] != b"XLDRPAY1":
+        die("not an XLDRPAY1 payload (needs raw boot-payload.img, not .gz)")
+    ver, count = struct.unpack_from("<II", data, 8)
+    total = struct.unpack_from("<Q", data, 16)[0]
+    fb_base, fb_size = struct.unpack_from("<QQ", data, 48)
+    fb_wh = struct.unpack_from("<IIII", data, 64)
+    print(f"payload ver={ver} sections={count} total={total:#x}")
+    print(f"fb base={fb_base:#x} size={fb_size:#x} w/h/s/d={fb_wh}")
+    base = 72
+    for i in range(count):
+        name, flags, _r, off, size = struct.unpack_from("<8sIIQQ", data, base + i * 32)
+        print(f"  [{i}] {name.decode().rstrip(chr(0)):8s} flags={flags} "
+              f"off={off:#x} size={size:#x}")
+    return 0
+
+
+def main():
+    p = argparse.ArgumentParser(prog="xl", description=__doc__)
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    pb = sub.add_parser("boot")
+    pb.add_argument("bootimg")
+    pb.set_defaults(fn=cmd_boot)
+
+    pl = sub.add_parser("log")
+    pl.add_argument("-d", "--device", default="/dev/ttyUSB0")
+    pl.add_argument("--baud", type=int, default=115200)
+    pl.add_argument("-o", "--out", default=f"{OUT_DEFAULT}/console.log")
+    pl.set_defaults(fn=cmd_log)
+
+    pp = sub.add_parser("panic")
+    pp.set_defaults(fn=cmd_panic)
+
+    pal = sub.add_parser("list")
+    pal.set_defaults(fn=cmd_list)
+
+    pd = sub.add_parser("payload")
+    pd.add_argument("dir")
+    pd.set_defaults(fn=cmd_payload)
+
+    args = p.parse_args()
+    args.fn(args)
+
+
+if __name__ == "__main__":
+    main()

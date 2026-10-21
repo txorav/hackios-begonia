@@ -1,0 +1,34 @@
+# fstab — HackiOS-begonia patched variant (iPhone10,3 · iOS 16.5 · Build 20F66)
+#
+# Installed by ../apply_rootfs_patches.sh step (b) as /private/etc/fstab,
+# with the pristine stock copy preserved at /private/etc/fstab.hackios-orig.
+#
+# Stock iPhone10,3 (iOS 16.5) fstab is a single-line-style pair, system volume
+# read-only:
+#
+#     /dev/disk0s1s1	/			apfs	ro		0	0
+#     /dev/disk0s2	/private/var		apfs	rw		0	2
+#
+# The IMMUTABILITY of stock / comes from (1) the boot chain mounting the system
+# volume from a (battery-era snapshot of the) sealed volume read-only, and
+# (2) Signed System Volume enforcement (iOS 15+, enforced on A11). Our port
+# neither enforces a seal nor uses a snapshot, so the difference between this
+# file and stock is the flag `rw` — see userland/README.md §4.
+#
+# IMPORTANT: the device paths below MUST match what our XNU IOMedia stack
+# publishes (UFS via 'ufshcd-mtk' @ 0x11270000 for disk0; GPT scheme per the
+# plan §Phase 4). If bring-up ends up naming volumes differently, change the
+# LEFT column ONLY — the mount FLAGS have to stay semantically identical.
+
+/dev/disk0s1s1	/			apfs	rw		0	0
+/dev/disk0s2	/private/var		apfs	rw	nosuid	0	2
+
+# Our XNU port boots the root volume WITHOUT an APFS snapshot (no SSV seal to
+# mount). If a bring-up build exposes the raw volume (no snapshot index), use:
+#
+#    /dev/disk0s1	/		apfs	rw		0	0
+#
+# M4 test ramdisk (HFS+ memory disk built by ../ramdisk/mkramdisk.sh). Never
+# inserted into the real fstab — it is referenced by boot args (rd=md0):
+#
+#    /dev/md0		/			hfs	rw		0	1

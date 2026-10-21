@@ -1,0 +1,278 @@
+/*
+ * main.c — xnuloader stage-2 boot flow (lk -> XNU).
+ *
+ * Entry (from entry.S): x0 = FDT physical address passed by lk.
+ * Exit: branch to the XNU kernel entry (its physical address from the
+ * LC_UNIXTHREAD), x0 = physical address of boot_args, MMU off, EL1, caches
+ * flushed.  XNU's start_first_cpu / common_start do everything else
+ * (TCR/TTBR/MAIR/SCTLR, VBAR, temp tables, arm_init() through PE_*).
+ */
+#include "console.h"
+#include "fdt.h"
+#include "adt.h"
+#include "boot_args.h"
+#include "macho.h"
+#include "payload.h"
+#include "psci.h"
+#include "regs.h"
+#include <stdint.h>
+#include <stddef.h>
+#include <string.h>
+
+/* ---------- fixed memory layout (docs/hardware_map_mt6785.md §2) ---------- */
+
+#define XLDR_LOAD_BASE     0x40080000ul           /* where lk loads the image */
+#define KERNEL_LOAD_BASE   0x40200000ul           /* kernelcache destination  */
+#define KERNEL_LOAD_ALIGN  0x200000ull            /* 2 MiB (L2-block rule)    */
+#define DRAM_BASE_DEFAULT  0x40000000ul
+#define MEM_SIZE_DEFAULT   0xC0000000ull          /* 4 GiB Device             */
+#define VIRT_BASE_KOFF     0xffffffe000000000ull  /* xnu VM_MIN_KERNELABS    */
+
+#define MAX_CMDLINE        608
+
+static char g_cmdline[MAX_CMDLINE];
+static const char default_cmdline[] =
+	"serial=3 -v debug=0x8e keepsyms=1 rd=md0 rootdev=md0 "
+	"cs_enforcement_disable=1 amfi_get_out_of_my_way=0x1 wpdebug=1";
+
+static uint64_t align_up(uint64_t v, uint64_t a) { return (v + a - 1) & ~(a - 1); }
+
+/* find the appended payload manifest (mkxnuimg page-aligns it after us) */
+static const volatile struct payload_manifest *
+find_payload(uint64_t load_base)
+{
+	for (uint64_t a = ((load_base + 0xFFFF) & ~0xFFFFul); a < 0x46000000ul;
+	     a += 0x10000) {
+		const volatile uint8_t *m = (const volatile uint8_t *)a;
+		uint8_t ok = 1;
+		static const char magic[] = PAYLOAD_MAGIC;
+		for (int i = 0; i < 8; i++) {
+			if (m[i] != (uint8_t)magic[i]) {
+				ok = 0;
+				break;
+			}
+		}
+		if (ok) {
+			return (const volatile struct payload_manifest *)a;
+		}
+	}
+	return 0;
+}
+
+void
+xldr_panic(const char *why)
+{
+	uart_puts("\nXLDR PANIC: ");
+	uart_puts(why);
+	uart_puts("\n");
+	fb_text("XLDR PANIC", 400, 300, 0xFFFF0000u, 4);
+	fb_text(why, 40, 400, 0xFFFF0000u, 2);
+	xldr_write_panic_record(why);
+	for (;;) {
+		asm volatile("wfe");
+	}
+}
+
+/* Clean+invalidate the whole D-cache by set/way, then I-cache. */
+void
+cache_flush_all(void)
+{
+	uint64_t clidr, ccsidr, sets, ways;
+	uint64_t level;
+	asm volatile("mrs %0, clidr_el1" : "=r"(clidr));
+	uint64_t loc = ((clidr >> 24) & 0x7);
+	for (level = 0; level < loc; level++) {
+		uint32_t ctype = (uint32_t)((clidr >> (level * 3)) & 0x7);
+		if (ctype == 0) {
+			break;
+		}
+		asm volatile("msr csselr_el1, %0" :: "r"(level));
+		asm volatile("isb");
+		asm volatile("mrs %0, ccsidr_el1" : "=r"(ccsidr));
+		sets  = ((ccsidr >> 13) & 0x7FFF) + 1;
+		ways  = ((ccsidr >> 3) & 1023) + 1;
+		uint64_t w_pow = 0;
+		while ((1ull << w_pow) < ways) {
+			w_pow++;
+		}
+		uint64_t way_pos = 32 - w_pow;   /* way field occupies top w_pow bits */
+		for (uint64_t s = 0; s < sets; s++) {
+			for (uint64_t w = 0; w < ways; w++) {
+				uint64_t swv = (w << way_pos) | (s << 13) | (level << 1);
+				asm volatile("dc cisw, %0" :: "r"(swv));
+			}
+		}
+	}
+	asm volatile("dsb sy");
+	asm volatile("ic iallu");
+	asm volatile("dsb sy");
+	asm volatile("isb");
+}
+
+/* --------------------------- main flow --------------------------- */
+
+/*
+ * C entry: called from entry.S with the lk x0 (FDT PA).  This never returns:
+ * after relocating the kernelcache, it jumps straight into XNU.
+ */
+void
+xldr_main(uint64_t fdt_pa)
+{
+	uart_init(UART0_BASE_DEFAULT);
+	uart_puts("\nHACKIOS xnuloader: lk handoff, FDT @ ");
+	uart_puthex(fdt_pa);
+	uart_puts("\n");
+
+	int fdtrc = fdt_pa ? fdt_init(fdt_pa) : FDT_E_BADMAG;
+	uint64_t mem_size = MEM_SIZE_DEFAULT;
+	if (fdtrc == FDT_E_OK) {
+		mem_size = fdt_mem_size();
+		if (mem_size == 0) {
+			mem_size = MEM_SIZE_DEFAULT;   /* no /memory node → default */
+		}
+	} else {
+		uart_puts("xlDR: FDT parse failed, using defaults\n");
+	}
+	uart_puts("memSize  ");
+	uart_puthex(mem_size);
+	uart_puts("\n");
+
+	/* framebuffer console: test pattern + logs; overridden by manifest */
+	fb_init(FB_BASE_DEFAULT, FB_WIDTH_DEFAULT, FB_HEIGHT_DEFAULT, FB_STRIDE_DEFAULT);
+	fb_draw_test_pattern();
+	fb_text("HACKIOS XLDR", 60, 60, 0xFF00FF00u, 4);
+
+	const volatile struct payload_manifest *pm = find_payload(XLDR_LOAD_BASE);
+	if (pm == 0) {
+		xldr_panic("payload manifest not found (mkxnuimg append failed?)");
+	}
+	uart_puts("payload manifest found; sections: ");
+	uart_puthex(pm->section_count);
+	uart_puts("\n");
+
+	if (pm->fb_base) {
+		fb_init(pm->fb_base, pm->fb_width, pm->fb_height, pm->fb_stride);
+		fb_draw_test_pattern();
+	}
+
+	const volatile struct payload_section *pk = &pm->sect[SECT_KERNEL];
+	const volatile struct payload_section *pr = &pm->sect[SECT_RAMDISK];
+	if (pk->size == 0) {
+		xldr_panic("payload has no kernel section");
+	}
+
+	/* cmdline: from manifest, else default */
+	memset(g_cmdline, 0, sizeof(g_cmdline));
+	if (pm->cmdline_len != 0 && pm->cmdline_offset != 0 &&
+	    pm->cmdline_len < MAX_CMDLINE) {
+		const volatile char *c = (const volatile char *)
+		    ((uintptr_t)pm + pm->cmdline_offset);
+		for (uint32_t i = 0; i < pm->cmdline_len; i++) {
+			g_cmdline[i] = c[i];
+		}
+		g_cmdline[MAX_CMDLINE - 1] = 0;
+	} else {
+		memcpy(g_cmdline, default_cmdline, sizeof(default_cmdline));
+	}
+
+	/* ---- relocate the kernelcache ---- */
+	uint64_t kern_src = (uint64_t)((uintptr_t)pm + pm->sect[SECT_KERNEL].offset);
+	uint64_t kern_dst = align_up(KERNEL_LOAD_BASE, KERNEL_LOAD_ALIGN);
+	uint64_t kern_entry = 0;
+	int mrc = macho_load(kern_src, kern_dst, &kern_entry);
+	if (mrc != 0) {
+		uart_puts("macho_load rc ");
+		uart_puthex((uint64_t)(int64_t)mrc);
+		xldr_panic("kernelcache load failed");
+	}
+
+	/* ---- overrides; fixed layout so ADT is correct at build ---- */
+	struct adt_overrides ov;
+	memset(&ov, 0, sizeof(ov));
+	ov.phys_base = DRAM_BASE_DEFAULT;
+	ov.phys_size = mem_size;
+	ov.fb_base   = pm->fb_base ? pm->fb_base : FB_BASE_DEFAULT;
+	ov.fb_width  = pm->fb_width  ? pm->fb_width  : FB_WIDTH_DEFAULT;
+	ov.fb_height = pm->fb_height ? pm->fb_height : FB_HEIGHT_DEFAULT;
+	ov.fb_stride = pm->fb_stride ? pm->fb_stride : FB_STRIDE_DEFAULT;
+	ov.fb_depth  = pm->fb_depth  ? pm->fb_depth  : FB_DEPTH_DEFAULT;
+	ov.fb_size   = (uint64_t)ov.fb_height * ov.fb_stride;
+	ov.cmdline   = g_cmdline;
+	ov.mm_dt_size = 0x10000;                 /* fixed 64 KiB DT reserve     */
+
+	uint64_t rd_size = pr->size;
+	if (pr->size == 0 && pm->section_count > SECT_RAMDISK + 1) {
+		rd_size = 0;
+	}
+	const void *rd_src = rd_size ? (const void *)((uintptr_t)pm + pr->offset) : 0;
+	ov.mm_rd_size = rd_size;
+
+	/* layout: ADT right after the relocated kernel, RAMDisk after, BA last */
+	adt_build(&ov);                          /* fills pools + provisional  */
+	uint64_t adt_sz = (uint64_t)adt_size();
+
+	uint64_t adt_base = align_up(g_macho_top, 0x8000);
+	uint64_t rd_base  = align_up(adt_base + adt_sz, 0x8000);
+	uint64_t ba_base  = align_up(rd_base + rd_size, 64);
+	uint64_t topo     = align_up(ba_base + sizeof(struct boot_args), 0x4000);
+	ov.mm_dt_addr = adt_base;
+	ov.mm_rd_addr = rd_base;
+	adt_build(&ov);
+	adt_sz = (uint64_t)adt_size();
+
+	/* ---- place ADT + RAMDisk + boot_args ---- */
+	{
+		int sz = 0;
+		adt_serialize((uint8_t *)adt_base, &sz);
+		if (rd_size) {
+			memcpy((void *)rd_base, rd_src, rd_size);
+		}
+	}
+
+	static struct boot_args ba;
+	memset(&ba, 0, sizeof(ba));
+	ba.Revision = KBOOT_ARGS_REVISION;
+	ba.Version  = KBOOT_ARGS_VERSION;
+	ba.virtBase = VIRT_BASE_KOFF + (uint64_t)(ov.phys_base);
+	ba.physBase = ov.phys_base;
+	ba.memSize  = mem_size;
+	ba.topOfKernelData = topo;
+	ba.Video.v_baseAddr = ov.fb_base;
+	ba.Video.v_display  = 0;
+	ba.Video.v_rowBytes = ov.fb_stride;
+	ba.Video.v_width    = ov.fb_width;
+	ba.Video.v_height   = ov.fb_height;
+	ba.Video.v_depth    = ov.fb_depth;
+	ba.machineType      = 0;
+	ba.deviceTreeP      = (uint64_t *)adt_base;   /* physical (PE_init uses raw) */
+	ba.deviceTreeLength = (uint32_t)adt_sz;
+	ba.bootFlags        = 0;
+	ba.memSizeActual    = mem_size;
+	memcpy(ba.CommandLine, g_cmdline, (size_t)strlen(g_cmdline) + 1);
+
+	memcpy((void *)ba_base, &ba, sizeof(ba));
+
+	uart_puts("kern ");
+	uart_puthex(kern_dst);
+	uart_puts(" entry ");
+	uart_puthex(kern_entry);
+	uart_puts(" ADT ");
+	uart_puthex(adt_base);
+	uart_puts(" RD ");
+	uart_puthex(rd_base);
+	uart_puts(" BA ");
+	uart_puthex(ba_base);
+	uart_puts(" topo ");
+	uart_puthex(topo);
+	uart_puts("\n");
+
+	/* hand the caches + MMU state over; XNU expects flat, flushed start */
+	cache_flush_all();
+
+	fb_text("ENTERING XNU...", 60, 140, 0xFF00FFFFu, 3);
+
+	typedef void (*xnu_entry_t)(uint64_t);
+	((xnu_entry_t)kern_entry)(ba_base);
+
+	xldr_panic("returned from xnu entry");
+}

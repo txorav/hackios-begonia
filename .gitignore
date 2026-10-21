@@ -1,0 +1,25 @@
+# build artifacts
+build/
+out/
+*.o
+*.elf
+*.bin
+*.a
+*.d
+*.img
+*.iso
+*.kext
+*.bin.tmp
+__pycache__/
+*.pyc
+.DS_Store
+tools/mtkclient
+tools/edk2
+tools/llvm*
+tools/cctools*
+tools/ldid
+node_modules/
+.env
+qemu/out/
+preloader_backup/
+uart_capture/

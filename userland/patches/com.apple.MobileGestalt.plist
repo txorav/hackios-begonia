@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.apple.MobileGestalt.plist — HackiOS-begonia review skeleton
+  ---------------------------------------------------------------
+  Identity masqueraded: iPhone10,3 (iPhone X) · board D22AP · A11 Bionic ·
+  chip-id 0x8020 = 32800 · running iOS 16.5 (Build 20F66).
+
+  Real on-device caches store answers UNDER HASHED KEYS in a top-level
+  `CacheExtra` dict (libMobileGestalt hashes the plain key and looks it up).
+  The hashed names below are the verified values from
+  theapplewiki.com/wiki/List_of_MobileGestalt_keys (plain names in comments).
+
+  NOTE — keys from earlier project notes that do NOT exist in MobileGestalt:
+    "HwModel"          → use HWModelStr  (hardware model, "D22AP") and
+                         ProductType (device identifier "iPhone10,3")
+    "MainScreenPitch"  → use main-screen-pitch (kebab, iOS7-era key names)
+    "MainScreenWidth"  → use main-screen-width
+  ChipID is written as the CPID as an INTEGER (Apple Wiki wording) = 32800;
+  the string form "8020" is available via --chipid-repr hexstring on the
+  generator.  Serial/ECID/UDID values are synthetic placeholders (UDID =
+  SHA1 of the documented serial/ECID tuple); regenerate the file with
+  ../patch_mobilegestalt.py instead of hand-editing.
+
+  The canonical generator is ../patch_mobilegestalt.py — regenerate rather
+  than hand-editing this file.  Screen numbers follow iPhone10,3 canonical
+  geometry (1125×2436 @3x, 458 ppi; begonia's 1080×2340 panel is the same
+  19.5:9 aspect ratio — see patch_mobilegestalt.py docstring).
+-->
+<dict>
+	<key>CacheExtra</key>
+	<dict>
+		<!-- ProductType: device identifier -->
+		<key>h9jDsbgj7xIVeIQ8S3/X3Q</key>
+		<string>iPhone10,3</string>
+		<!-- HWModelStr: hardware model / board string -->
+		<key>/YYygAofPDbhrwToVsXdeA</key>
+		<string>D22AP</string>
+		<!-- HardwarePlatform: SoC platform string (A11 = t8020) -->
+		<key>5pYKlGnYYBzGvAlIU8RjEQ</key>
+		<string>t8020</string>
+		<!-- ChipID: CPID of the SoC, integer. A11 = 0x8020 = 32800 -->
+		<key>566JrJVMlDfnslGpwUzNlQ</key>
+		<integer>32800</integer>
+		<!-- CPUArchitecture -->
+		<key>k7QIBwZJJOVw+Sej/8h8VA</key>
+		<string>arm64</string>
+		<!-- CPUType: CPU_TYPE_ARM64 (0x0100000C) -->
+		<key>xZm4Ky2/qswyf7ykvlchYg</key>
+		<integer>16777228</integer>
+		<!-- DeviceClass -->
+		<key>+3Uf0Pm5F8Xy7Onyvko0vA</key>
+		<string>iPhone</string>
+		<!-- DeviceName -->
+		<key>rkqlwPcRHwixY4gapPjanw</key>
+		<string>iPhone X</string>
+		<!-- BoardId -->
+		<key>0uthiXrHZ212KvcJizKHEw</key>
+		<string>D22AP</string>
+		<!-- ProductVersion / BuildVersion -->
+		<key>qNNddlUK+B/YlooNoymwgA</key>
+		<string>16.5</string>
+		<key>mZfUC7qo4pURNhyMHZ62RQ</key>
+		<string>20F66</string>
+		<!-- SerialNumber (synthetic; override via --serial) -->
+		<key>VasUgeSzVyHdB27g2XpN0g</key>
+		<string>H0CK1OS00000</string>
+		<!-- DieId / UniqueChipIDString (synthetic ECID; override via --ecid) -->
+		<key>Z/TJS0IaLyq10dcSvUTGPg</key>
+		<string>0x0051339B1AC4</string>
+		<key>6WdGcQGw4VLzrgxJo+bcrw</key>
+		<string>0051339B1AC4</string>
+		<!-- UniqueDeviceID (UDID, synthetic SHA1-derived; override via --udid) -->
+		<key>re6Zb+zwFKJNlkQTUeT+/w</key>
+		<string>A1CB4D3CBB4282B0B19A234D5F8CC5B5D58A0F1B</string>
+		<!-- 64-bit / arm64 capability -->
+		<key>V2Ykm/0M3CA6nyNhwNInsg</key>
+		<true/>
+		<key>kKgJsWN/rBUAkimOtm/wbA</key>
+		<true/>
+		<!-- main-screen-width / -height / -pitch / -scale / -orientation
+		     (iPhone10,3 canonical; begonia_true mode swaps in 1080/2340/395/1.0) -->
+		<key>g7YQ1Djxh4YiKlEeaoGhzg</key>
+		<integer>1125</integer>
+		<key>OjzOua0LkOegX7pQdgMksw</key>
+		<integer>2436</integer>
+		<key>0l4wqBtWEAK1tOkeBHkU6Q</key>
+		<integer>458</integer>
+		<key>SNfDJgQFV2Xj7+WnozcJPw</key>
+		<real>3.0</real>
+		<key>1qDdT/85SS7sxriK0wIbbg</key>
+		<integer>0</integer>
+	</dict>
+	<key>hackios</key>
+	<dict>
+		<key>built_by</key>
+		<string>review skeleton — regenerate with userland/patch_mobilegestalt.py</string>
+		<key>device</key>
+		<string>Xiaomi Redmi Note 8 Pro (begonia), MT6785 Helio G90T, ARMv8.2-A</string>
+		<key>masquerade</key>
+		<dict>
+			<key>ProductType</key>
+			<string>iPhone10,3</string>
+			<key>BoardId</key>
+			<string>D22AP</string>
+			<key>ChipID</key>
+			<string>0x8020 = 32800 (A11 Bionic)</string>
+		</dict>
+	</dict>
+</dict>
+</plist>
