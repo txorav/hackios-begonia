@@ -132,6 +132,24 @@ protected:
 };
 
 /* ==========================================================================
+ * LxKitStorageNub — the concrete storage child nub (kinds: msdc1, ufs0).
+ *
+ * This is the class LxStorage's own LxBlockService personality matches:
+ *      IOProviderClass = "LxKitStorageNub"
+ * (kept as its own class, not the generic nub, so a future touch-storage
+ * confusion is impossible at the matching layer; the generic
+ * LxKitDeviceNub stays as the base class for anything else the walker
+ * may produce later, e.g. a debug device.)
+ * ========================================================================== */
+class LxKitStorageNub : public LxKitDeviceNub {
+	OSDeclareDefaultStructors(LxKitStorageNub);
+
+public:
+	/* No behavioural overrides — the base class does everything
+	 * (DeviceMemory + IOInterrupt* properties from the lx_device).     */
+};
+
+/* ==========================================================================
  * LxKitTouchNub — dedicated provider nub published for FocalTouchIOHID
  * (class name is the match key: "IOProviderClass" = "LxKitTouchNub").
  * The nub carries:

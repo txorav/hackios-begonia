@@ -250,12 +250,8 @@ lxkit_glue_destroy(struct lx_context *ctx)
 
 	if (g == NULL)
 		return;
-	lxkit_irq_attach(NULL);          /* detach (timer stop) */
-	lxkit_work_attach(NULL);
-	if (g->soft_irq_timer != NULL) {
-		g->soft_irq_timer->release();
-		g->soft_irq_timer = NULL;
-	}
+	lxkit_irq_detach(g);             /* per-glue: timer stop + free */
+	lxkit_work_detach(g);
 	IOFree(g, sizeof(*g));
 	ctx->priv = NULL;
 	if (g_lx_default_ctx == ctx)

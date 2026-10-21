@@ -66,7 +66,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu qemu-system-arm
+            gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
+            qemu-system-arm qemu-system-data
       - name: Boot the loader under qemu -M virt
         run: bash qemu/run_qemu.sh
       - name: Upload serial log

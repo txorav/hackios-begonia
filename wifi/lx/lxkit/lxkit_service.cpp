@@ -416,6 +416,11 @@ LxKitDeviceNub::getWorkLoop() const
 }
 
 /* ==========================================================================
+ * LxKitStorageNub
+ * ========================================================================== */
+OSDefineMetaClassAndStructors(LxKitStorageNub, LxKitDeviceNub);
+
+/* ==========================================================================
  * LxKitTouchNub
  * ========================================================================== */
 OSDefineMetaClassAndStructors(LxKitTouchNub, LxKitDeviceNub);

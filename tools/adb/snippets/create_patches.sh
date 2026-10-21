@@ -38,7 +38,7 @@ snapshot_targets=(
 log()  { printf '[create_patches] %s\n' "$*"; }
 warn() { printf '[create_patches] WARNING: %s\n' "$*" >&2; }
 die()  { printf '[create_patches] ERROR: %s\n' "$1"; exit "${2:-1}"; }
-usage(){ sed -n '4,37p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage(){ sed -n '3,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0; }
 
 while getopts ":ho:" opt; do
   case "$opt" in
@@ -72,41 +72,51 @@ if [[ -z "$PROBE" ]]; then
   die "/private/var missing — are we booted into the IOS filesystem at all? (adb shell 'ls /')" 3
 fi
 
-mkdir -p "$OUT" "$WORK"
-log "snapshotting ${#snapshot_targets[@]} patch targets to $OUT (stock originals + diffs)"
+mkdir -p "$OUT"
+log "snapshotting ${#snapshot_targets[@]} patch targets to $OUT (baseline + drift diffs)"
+
+cp_snap() {  # cp_snap SRC DST — cp -a with an on-device cp -R fallback
+  if ! cp -a "$1" "$2" 2>/dev/null; then
+    cp -R "$1" "$2"
+  fi
+}
 
 RC=0
 for t in "${snapshot_targets[@]}"; do
   name="$(basename "$t")"
-  tag="$name.stock"
   log "  → $t"
   if [[ ! -e "$t" ]]; then
-    warn "    missing on this build — skipping (fstab relocated? see userland/patches/fstab)"
+    warn "    missing on this build — skipping (relocated? see userland/patches/fstab)"
     RC=3
     continue
   fi
-  if ! cp -a "$t" "$OUT/$tag" 2>/dev/null; then
-    if ! cp -R "$t" "$OUT/$tag"; then
-      warn "    copy failed (permissions?) — skipping diff too"
+  if [[ ! -e "$OUT/${name}.baseline" ]]; then
+    if ! cp_snap "$t" "$OUT/${name}.baseline"; then
+      warn "    baseline copy failed (permissions?)"
       RC=3
       continue
     fi
-    log "    stock copy (cp -R fallback): $OUT/$tag"
+    log "    baseline created: $OUT/${name}.baseline (unmodified stock)"
+  elif diff -u "$OUT/${name}.baseline" "$t" > "$OUT/${name}.patch"; then
+    log "    unchanged since baseline"
+    rm -f "$OUT/${name}.patch"
   else
-    log "    stock copy: $OUT/$tag"
+    log "    drift vs baseline → $OUT/${name}.patch"
   fi
 done
 
-# Worklog.txt style — a manifest of what we touched for the other agents
+# Manifest of what we touched — follow-up agents read this first
 {
   echo "# create_patches.sh runtime manifest ($(date -u +%FT%TZ))"
   echo "device: $(getprop ro.product.model 2>/dev/null || echo unknown)"
-  echo "ios-version: $(grep -m1 ProductVersion /System/Library/CoreServices/SystemVersion.plist 2>/dev/null || echo unknown)"
+  echo "ios-version-key-line: $(grep -m1 ProductVersion /System/Library/CoreServices/SystemVersion.plist 2>/dev/null || echo unknown)"
   echo "targets:"
   for t in "${snapshot_targets[@]}"; do
     echo "  - $t"
   done
+  echo "outputs: <name>.baseline (first-run stock copy) · <name>.patch (drift diff if any)"
 } > "$OUT/manifest.txt" 2>/dev/null || warn "manifest write failed"
 
-log "done — next: push the resulting $OUT/ folder to your host 'adb pull $OUT'"
+log "done — pull with:  adb pull '$OUT'"
+log "never push modified files back manually; userland/apply_rootfs_patches.sh owns that"
 exit "$RC"

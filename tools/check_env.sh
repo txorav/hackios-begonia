@@ -28,7 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROG="$(basename "${BASH_SOURCE[0]}")"
 PY="$SCRIPT_DIR/check_env.py"
 
-usage() { sed -n '4,31p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0; }
+usage() { sed -n '5,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0; }
 
 [[ -f "$PY" ]] || { echo "[check_env.sh] ERROR: $PY missing" >&2; exit 2; }
 command -v python3 >/dev/null 2>&1 || {

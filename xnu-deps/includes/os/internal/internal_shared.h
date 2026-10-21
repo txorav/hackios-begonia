@@ -35,6 +35,16 @@
 
 #ifndef FIREHOSE_INTERNAL_ATOMIC_MAPPED
 
+/* C11 minimally-faithful fallback when neither libplatform's exactly matching
+ * os/atomic.h nor the xnu kernel export is present (the canonical in-tree
+ * definition is libkern/os/atomic.h:78:
+ * `#define os_atomic(type) type volatile _Atomic`). */
+#ifndef __cplusplus
+#define os_atomic(type) type volatile _Atomic
+#else
+#define os_atomic(type) volatile type
+#endif
+
 /* minimal OsAtomic semantic shims used by libkern/os code compiled
  * directly; see libkern/os/atomic.h for the canonical versions in-tree. */
 typedef volatile long   os_atomic_long_t;

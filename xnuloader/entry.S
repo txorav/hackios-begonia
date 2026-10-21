@@ -26,6 +26,7 @@ _image_header_start:
 
 	.text
 	.align	2
+	.globl	xldr_entry_real
 
 xldr_entry_real:
 	mov	x19, x0                     /* preserve lk's FDT pointer */
