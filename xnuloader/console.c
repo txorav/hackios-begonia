@@ -32,9 +32,12 @@ uart_write8(uint32_t off, uint8_t v)
 	uart_base[off] = v;
 }
 
+static void ramoops_putc(char c);
+
 void
 uart_putc(char c)
 {
+	ramoops_putc(c);
 	if (!uart_base) {
 		return;
 	}
@@ -168,22 +171,69 @@ fb_draw_test_pattern(void)
 	       40, 40, 0xFF00FF00u, 3);
 }
 
-/* ---------------- pstore (XLDRPANIC) ---------------- */
+/* ---------------- MediaTek MT6785 TOPRGU Watchdog ---------------- */
+
+void
+wdt_kick(void)
+{
+	volatile uint32_t *restart = (volatile uint32_t *)MTK_WDT_RESTART;
+	*restart = MTK_WDT_RESTART_KEY;
+}
+
+void
+wdt_disable(void)
+{
+	wdt_kick();
+	volatile uint32_t *mode = (volatile uint32_t *)MTK_WDT_MODE;
+	uint32_t v = *mode;
+	v |= MTK_WDT_MODE_KEY;
+	v &= ~(1u | 8u | 0x40u); /* clear ENABLE, IRQ, DUAL_MODE */
+	*mode = v;
+}
+
+/* ---------------- persistent ramoops (console-ramoops) ---------------- */
+
+static void
+ramoops_putc(char c)
+{
+	/* Format: struct persistent_ram_buffer { uint32_t sig; uint32_t start; uint32_t size; uint8_t data[]; } */
+	volatile uint32_t *hdr = (volatile uint32_t *)RAMOOPS_BASE;
+	if (hdr[0] != 0x43474244u) { /* 'DBGC' */
+		hdr[0] = 0x43474244u;
+		hdr[1] = 0;
+		hdr[2] = 0;
+	}
+	uint32_t sz = hdr[2];
+	if (sz + 1 < (RAMOOPS_SIZE - 16)) {
+		volatile uint8_t *data = (volatile uint8_t *)(RAMOOPS_BASE + 12);
+		data[sz] = (uint8_t)c;
+		hdr[2] = sz + 1;
+	}
+}
 
 void
 xldr_write_panic_record(const char *why)
 {
-	volatile uint8_t *rp = (volatile uint8_t *)RAMOOPS_BASE;
-	const char hdr[] = "XLDRPANIC\n";
-	for (size_t i = 0; i < sizeof(hdr) - 1; i++) {
-		rp[i] = hdr[i];
+	const char hdr[] = "\n\n*** XLDRPANIC ***\n";
+	for (size_t i = 0; hdr[i]; i++) {
+		ramoops_putc(hdr[i]);
 	}
-	size_t n = sizeof(hdr) - 1;
-	while (why && *why && n < RAMOOPS_SIZE / 4) {
+	if (why) {
+		for (size_t i = 0; why[i]; i++) {
+			ramoops_putc(why[i]);
+		}
+	}
+	ramoops_putc('\n');
+
+	/* Also write legacy flat record to fallback address for compatibility */
+	volatile uint8_t *rp = (volatile uint8_t *)RAMOOPS_BASE_FALLBACK;
+	const char flat_hdr[] = "XLDRPANIC\n";
+	for (size_t i = 0; i < sizeof(flat_hdr) - 1; i++) {
+		rp[i] = flat_hdr[i];
+	}
+	size_t n = sizeof(flat_hdr) - 1;
+	while (why && *why && n < 0x2000) {
 		rp[n++] = (uint8_t)*why++;
 	}
 	rp[n++] = '\n';
-	while (n < RAMOOPS_SIZE) {
-		rp[n++] = '.';
-	}
 }

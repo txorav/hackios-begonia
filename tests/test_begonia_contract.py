@@ -142,14 +142,12 @@ class TestAndroidBootImgPacking(unittest.TestCase):
     def test_boot_image_v2_header(self):
         self.assertTrue(os.path.isfile(self.test_img))
         with open(self.test_img, "rb") as f:
-            header_bytes = f.read(712)
+            header_bytes = f.read(1660)
 
         magic = header_bytes[0:8]
         self.assertEqual(magic, b"ANDROID!", "Invalid Android boot.img header magic")
 
         # Unpack header fields according to boot_img_hdr_v2:
-        # 8s (magic) + 4I (kernel_size, kernel_addr, ramdisk_size, ramdisk_addr) +
-        # 2I (second_size, second_addr) + 2I (tags_addr, page_size) + 2I (header_version, os_version)
         fields = struct.unpack_from("<8s8I2I", header_bytes, 0)
         kernel_size = fields[1]
         kernel_addr = fields[2]
@@ -164,6 +162,10 @@ class TestAndroidBootImgPacking(unittest.TestCase):
         self.assertEqual(tags_addr, BOOT_BASE + BOOT_TAGS_OFFSET, "Tags addr must match 0x4bc80000")
         self.assertEqual(page_size, BOOT_PAGE_SIZE, "Page size must be 2048")
         self.assertEqual(header_version, 2, "Android boot header version must be 2")
+
+        # Verify v1 header_size at offset 1644
+        hdr_size = struct.unpack_from("<I", header_bytes, 1644)[0]
+        self.assertEqual(hdr_size, 1660, "boot_img_hdr_v1/v2 header_size must be 1660 bytes")
 
     def test_payload_manifest_structure(self):
         """Uncompresses the kernel payload and inspects the embedded XLDRPAY1 manifest."""

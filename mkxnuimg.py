@@ -26,7 +26,7 @@ MAGIC            = b"XLDRPAY1"
 PAYLOAD_VERSION  = 1
 SECT_MAX         = 4          # [adt][kernel][ramdisk][0]
 MANIFEST_SIZE    = 208        # must equal sizeof(struct payload_manifest)
-BOOT_HDR_V2_SIZE = 712
+BOOT_HDR_V2_SIZE = 1660
 
 
 def align(v, a):
@@ -196,16 +196,17 @@ def make_boot_img(args):
     hdr[off:off+512] = cmd_b;                               off = 576
     hdr[off:off+32] = b"\x00" * 32                          # id[8]
     off = 608
-    hdr[off:off+64] = b"\x00" * 64                          # extra_cmdline
-    off = 672
+    hdr[off:off+1024] = b"\x00" * 1024                     # extra_cmdline (1024 bytes)
+    off = 1632
     # v1: recovery_dtbo_size / recovery_dtbo_offset / header_size
-    hdr[off:off+4]  = struct.pack("<I", 0)
+    hdr[off:off+4]   = struct.pack("<I", 0)
     hdr[off+4:off+12] = struct.pack("<Q", 0)
     hdr[off+12:off+16] = struct.pack("<I", BOOT_HDR_V2_SIZE)
-    off = 688
-    # v2: dtb_size (+ reserved) + dtb_addr
-    hdr[off:off+4]  = struct.pack("<I", len(dtb_blob))
-    hdr[off+8:off+16] = struct.pack("<Q", dtb_addr)
+    off = 1648
+    # v2: dtb_size + dtb_addr
+    dtb_sz = len(dtb_blob)
+    hdr[off:off+4]   = struct.pack("<I", dtb_sz)
+    hdr[off+4:off+12] = struct.pack("<Q", dtb_addr if dtb_sz else 0)
 
     img = bytearray(hdr)
     img += b"\x00" * (align(len(hdr), page) - len(hdr))

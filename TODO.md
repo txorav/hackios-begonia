@@ -99,8 +99,9 @@ Comprehensive master task list and engineering plan for porting Darwin (XNU 8796
 | **Loader Entry** | `0x40080000` | 1 MiB | `xnuloader/entry.S`, `mkxnuimg.py` | [x] Matches `lk` boot.img offset |
 | **Kernel Base** | `0x40200000` | ~30 MiB | Mach-O segment target | [x] Configured in `main.c` |
 | **Secure Carveout** | `0x47c00000` | 4 MiB | ATF BL31 / SCP / TEE | [!] Must be excluded from XNU pmap |
-| **Ramoops Ring** | `0x47df0000` | 64 KiB | `xldr_write_panic_record` | [x] Verified warm-reset persistent |
-| **Linear FB** | `0x7f000000` | ~10 MiB | `MT6785Framebuffer`, `boot_args.Video` | [~] Subject to unit DRAM size |
+| **Ramoops Ring** | `0x4d05f000` | 256 KiB | `xldr_write_panic_record` | [x] Verified in live `/proc/iomem` & `bootargs` |
+| **Linear FB** | `0x7e605000` | ~25 MiB | `MT6785Framebuffer`, `boot_args.Video` | [x] Verified via live FDT `atag,videolfb` (stride 4352) |
+| **Watchdog (TOPRGU)**| `0x10007000` | 4 KiB | `entry.S` & `console.c` | [x] Disabled early to prevent hardware reset |
 | **GICv3 Dist** | `0x0c000000` | 256 KiB | `kexts/MT6785GICv3` | [x] Verified against MT6785 spec |
 | **GICv3 Redits** | `0x0c040000` | 768 KiB | `kexts/MT6785GICv3` ($8\times 0\text{x}20000$) | [x] Verified against MT6785 spec |
 | **UART0** | `0x11002000` | 4 KiB | `xnuloader/console.c` (16550 4B-stride, SPI 115 / `0x73`) | [x] Verified in begonia DTS (baud 921600 or 115200) |

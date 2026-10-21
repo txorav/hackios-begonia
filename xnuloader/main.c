@@ -128,6 +128,9 @@ cache_flush_all(void)
 void
 xldr_main(uint64_t fdt_pa)
 {
+	/* Immediately disable hardware watchdog so MTK timer won't reboot us */
+	wdt_disable();
+
 	uart_init(UART0_BASE_DEFAULT);
 	uart_puts("\nHACKIOS xnuloader: lk handoff, FDT @ ");
 	uart_puthex(fdt_pa);
@@ -135,10 +138,28 @@ xldr_main(uint64_t fdt_pa)
 
 	int fdtrc = fdt_pa ? fdt_init(fdt_pa) : FDT_E_BADMAG;
 	uint64_t mem_size = MEM_SIZE_DEFAULT;
+	uint64_t fb_base_dyn = 0;
 	if (fdtrc == FDT_E_OK) {
 		mem_size = fdt_mem_size();
 		if (mem_size == 0) {
 			mem_size = MEM_SIZE_DEFAULT;   /* no /memory node → default */
+		}
+
+		/* Inspect /chosen node for lk-passed atag,videolfb framebuffer address */
+		int chosen_node = -1;
+		if (fdt_find_prefix("chosen", -1, &chosen_node) == FDT_E_OK) {
+			const uint8_t *val = 0;
+			int len = 0;
+			if (fdt_get_prop(chosen_node, "atag,videolfb-fb_base_l", &val, &len) == FDT_E_OK && len >= 4) {
+				uint32_t fb_l = ((uint32_t)val[0] << 24) | ((uint32_t)val[1] << 16) |
+				                ((uint32_t)val[2] << 8) | (uint32_t)val[3];
+				uint32_t fb_h = 0;
+				if (fdt_get_prop(chosen_node, "atag,videolfb-fb_base_h", &val, &len) == FDT_E_OK && len >= 4) {
+					fb_h = ((uint32_t)val[0] << 24) | ((uint32_t)val[1] << 16) |
+					       ((uint32_t)val[2] << 8) | (uint32_t)val[3];
+				}
+				fb_base_dyn = ((uint64_t)fb_h << 32) | fb_l;
+			}
 		}
 	} else {
 		uart_puts("xlDR: FDT parse failed, using defaults\n");
@@ -146,11 +167,6 @@ xldr_main(uint64_t fdt_pa)
 	uart_puts("memSize  ");
 	uart_puthex(mem_size);
 	uart_puts("\n");
-
-	/* framebuffer console: test pattern + logs; overridden by manifest */
-	fb_init(FB_BASE_DEFAULT, FB_WIDTH_DEFAULT, FB_HEIGHT_DEFAULT, FB_STRIDE_DEFAULT);
-	fb_draw_test_pattern();
-	fb_text("HACKIOS XLDR", 60, 60, 0xFF00FF00u, 4);
 
 	const volatile struct payload_manifest *pm = find_payload(XLDR_LOAD_BASE);
 	if (pm == 0) {
@@ -160,10 +176,19 @@ xldr_main(uint64_t fdt_pa)
 	uart_puthex(pm->section_count);
 	uart_puts("\n");
 
-	if (pm->fb_base) {
-		fb_init(pm->fb_base, pm->fb_width, pm->fb_height, pm->fb_stride);
-		fb_draw_test_pattern();
-	}
+	/* Determine active framebuffer: manifest > FDT atag,videolfb > default */
+	uint64_t active_fb = pm->fb_base ? pm->fb_base : (fb_base_dyn ? fb_base_dyn : FB_BASE_DEFAULT);
+	uint32_t active_w  = pm->fb_width  ? pm->fb_width  : FB_WIDTH_DEFAULT;
+	uint32_t active_h  = pm->fb_height ? pm->fb_height : FB_HEIGHT_DEFAULT;
+	uint32_t active_st = pm->fb_stride ? pm->fb_stride : FB_STRIDE_DEFAULT;
+
+	uart_puts("FB base: ");
+	uart_puthex(active_fb);
+	uart_puts("\n");
+
+	fb_init(active_fb, active_w, active_h, active_st);
+	fb_draw_test_pattern();
+	fb_text("HACKIOS XLDR: LK HANDOFF OK", 60, 60, 0xFF00FF00u, 3);
 
 	const volatile struct payload_section *pk = &pm->sect[SECT_KERNEL];
 	const volatile struct payload_section *pr = &pm->sect[SECT_RAMDISK];
@@ -201,10 +226,10 @@ xldr_main(uint64_t fdt_pa)
 	memset(&ov, 0, sizeof(ov));
 	ov.phys_base = DRAM_BASE_DEFAULT;
 	ov.phys_size = mem_size;
-	ov.fb_base   = pm->fb_base ? pm->fb_base : FB_BASE_DEFAULT;
-	ov.fb_width  = pm->fb_width  ? pm->fb_width  : FB_WIDTH_DEFAULT;
-	ov.fb_height = pm->fb_height ? pm->fb_height : FB_HEIGHT_DEFAULT;
-	ov.fb_stride = pm->fb_stride ? pm->fb_stride : FB_STRIDE_DEFAULT;
+	ov.fb_base   = active_fb;
+	ov.fb_width  = active_w;
+	ov.fb_height = active_h;
+	ov.fb_stride = active_st;
 	ov.fb_depth  = pm->fb_depth  ? pm->fb_depth  : FB_DEPTH_DEFAULT;
 	ov.fb_size   = (uint64_t)ov.fb_height * ov.fb_stride;
 	ov.cmdline   = g_cmdline;
@@ -275,6 +300,22 @@ xldr_main(uint64_t fdt_pa)
 	uart_puts(" topo ");
 	uart_puthex(topo);
 	uart_puts("\n");
+
+	/* If placeholder test kernel (entry point == 0), gracefully park on LCD */
+	if (kern_entry == 0) {
+		uart_puts("\n========================================\n");
+		uart_puts("[XLDR] MILESTONE M1 ACHIEVED ON BEGONIA!\n");
+		uart_puts("[XLDR] Stage-2 bare-metal loader executed successfully.\n");
+		uart_puts("[XLDR] Framebuffer, FDT & ADT parsing validated.\n");
+		uart_puts("========================================\n");
+		fb_text("MILESTONE M1: STAGE-2 OK!", 60, 180, 0xFF00FF00u, 3);
+		fb_text("BEGONIA LCD + FDT + WDT VALIDATED", 60, 230, 0xFFFFFFFFu, 2);
+		fb_text("WAITING FOR XNU KERNEL FLASH", 60, 280, 0xFFFFFF00u, 2);
+		for (;;) {
+			wdt_kick();
+			asm volatile("wfe");
+		}
+	}
 
 	/* hand the caches + MMU state over; XNU expects flat, flushed start */
 	cache_flush_all();

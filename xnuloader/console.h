@@ -12,10 +12,10 @@
 #else
 #define UART0_BASE_DEFAULT  0x11002000ul   /* MediaTek UART0 (lk-configured) */
 #endif
-#define FB_BASE_DEFAULT     0x7f000000ul
+#define FB_BASE_DEFAULT     0x7e605000ul   /* Begonia LK linear framebuffer (atag,videolfb) */
 #define FB_WIDTH_DEFAULT    1080
 #define FB_HEIGHT_DEFAULT   2340
-#define FB_STRIDE_DEFAULT   (1080 * 4)      /* RGBX8888 */
+#define FB_STRIDE_DEFAULT   4352           /* 1088 words * 4 = 4352 bytes */
 #define FB_DEPTH_DEFAULT    32
 
 void uart_init(uint64_t base);
@@ -29,10 +29,23 @@ void fb_clear(uint32_t rgb);
 void fb_text(const char *s, uint32_t x, uint32_t y, uint32_t fg, uint32_t scale);
 void fb_draw_test_pattern(void);   /* M1 visual proof: gradient + border + text */
 
-/* panic: XLDRPANIC record into phys 0x47df0000 (pstore) then WFE forever */
+/* watchdog: MediaTek MT6785 TOPRGU (0x10007000) */
+#define MTK_WDT_BASE        0x10007000ul
+#define MTK_WDT_MODE        (MTK_WDT_BASE + 0x0000)
+#define MTK_WDT_RESTART     (MTK_WDT_BASE + 0x0008)
+#define MTK_WDT_MODE_KEY    0x22000000u
+#define MTK_WDT_RESTART_KEY 0x1971u
+
+void wdt_disable(void);
+void wdt_kick(void);
+
+/* panic: XLDRPANIC record into persistent ramoops (0x4d05f000 on begonia) */
 void xldr_panic(const char *why) __attribute__((noreturn));   /* see main.c/hal c */
 void xldr_write_panic_record(const char *why);
-#define RAMOOPS_BASE 0x47df0000ul
-#define RAMOOPS_SIZE 0x10000
+
+/* Live begonia console-ramoops is at 0x4d05f000 (256 KiB); legacy carveout was 0x47df0000 */
+#define RAMOOPS_BASE_FALLBACK 0x47df0000ul
+#define RAMOOPS_BASE          0x4d05f000ul
+#define RAMOOPS_SIZE          0x40000ul
 
 #endif /* _XLDR_CONSOLE_H_ */

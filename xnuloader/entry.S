@@ -49,26 +49,44 @@ xldr_entry_real:
 	b	.L_dead
 
 .L_hop_el2:
+	/* --- disable MTK hardware watchdog early at EL2 --- */
+	ldr	x0, =0x10007000             /* MTK_WDT_BASE                 */
+	mov	w1, #0x1971                 /* MTK_WDT_RESTART_KEY          */
+	str	w1, [x0, #0x08]             /* MTK_WDT_RESTART (kick timer) */
+	ldr	w1, [x0]                    /* MTK_WDT_MODE                 */
+	mov	w2, #0x22000000             /* MTK_WDT_MODE_KEY             */
+	orr	w1, w1, w2
+	mov	w2, #0xFFB6                 /* clear bit 0 (EN), 3 (IRQ), 6 (DUAL) */
+	and	w1, w1, w2
+	str	w1, [x0]                    /* disable MTK hardware watchdog */
+
 	/* --- flatten EL2 -> EL1 --- */
-	mov	x2, #0
-	msr	sctlr_el1, x2               /* SCTLR_EL1: MMU off            */
+	mov	x2, #0x0800                 /* SCTLR_EL1 RES1 bits, MMU off */
+	msr	sctlr_el1, x2
 	dsb	sy
 	isb
 
-	mov	x4, #(1 << 31)              /* HCR_EL2: RW = 1 (AArch64)     */
-	orr	x4, x4, #(1 << 34)          /* TGE = 1                       */
-	orr	x4, x4, #(1 << 7)           /* AMO                            */
-	orr	x4, x4, #(1 << 4)           /* IMO                            */
-	orr	x4, x4, #(1 << 3)           /* FMO                            */
+	/*
+	 * HCR_EL2: RW = 1 (AArch64 execution at EL1).
+	 * Must NOT set TGE, E2H, or AMO/IMO/FMO interrupt routing.
+	 */
+	mov	x4, #(1 << 31)              /* HCR_EL2: RW = 1 (AArch64)    */
 	msr	hcr_el2, x4
 
-	/* allow EL1 access to the physical/virtual timers */
-	mov	x3, #3                      /* CNTHCTL.EL1PCEN|EL1PCTEN      */
-	msr	cnthctl_el2, x3
-	mov	x3, #0
-	msr	cntvoff_el2, x3
+	/* disable coprocessor and FP/SIMD traps to EL2 */
+	mov	x3, #0x33ff                 /* CPTR_EL2 RES1 | no FP traps   */
+	msr	cptr_el2, x3
 
-	mov	x5, #0x1C5                  /* SPSR_EL2: EL1h, DAIF masked   */
+	/* enable FP/SIMD instructions at EL1 */
+	mov	x3, #(3 << 20)              /* CPACR_EL1.FPEN = 0b11         */
+	msr	cpacr_el1, x3
+
+	/* allow EL1 access to the physical/virtual timers */
+	mov	x3, #3                      /* CNTHCTL.EL1PCEN|EL1PCTEN     */
+	msr	cnthctl_el2, x3
+	msr	cntvoff_el2, xzr
+
+	mov	x5, #0x3C5                  /* SPSR_EL2: EL1h, all DAIF masked */
 	msr	spsr_el2, x5
 	adr	x6, .L_return_el1
 	msr	elr_el2, x6
@@ -77,12 +95,16 @@ xldr_entry_real:
 	eret
 
 .L_return_el1:
-	mov	x0, x19                     /* rebuild FDT PA               */
+	mov	x0, x19                     /* restore lk's FDT PA          */
 	b	.L_at_el1
 
 .L_at_el1:
-	mov	x2, #0
-	msr	sctlr_el1, x2               /* ensure MMU is off            */
+	/* enable FP/SIMD instructions at EL1 */
+	mov	x2, #(3 << 20)
+	msr	cpacr_el1, x2
+
+	mov	x2, #0x0800
+	msr	sctlr_el1, x2               /* ensure MMU is off, RES1 set  */
 	dsb	sy
 	isb
 
