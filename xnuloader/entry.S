@@ -86,6 +86,18 @@ xldr_entry_real:
 	dsb	sy
 	isb
 
+	/*
+	 * Establish the C stack.  lk hands off with a live SP on the
+	 * device, but QEMU -kernel (and any bare-metal EL1 entry) starts
+	 * with SP=0 — the first prologue store then faults at SP-0xd0.
+	 * xldr_entry_stack is a 64 KiB in-image BSS array (main.c); use
+	 * its TOP (adrp:, then add the array size).
+	 */
+	adrp	x7, xldr_entry_stack
+	add	x7, x7, :lo12:xldr_entry_stack
+	add	x7, x7, #0x10000
+	mov	sp, x7
+
 	mov	x0, x19
 	bl	xldr_main                   /* C entry, x0 = FDT PA         */
 

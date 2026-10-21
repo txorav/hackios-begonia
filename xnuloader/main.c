@@ -30,6 +30,16 @@
 
 #define MAX_CMDLINE        608
 
+/*
+ * Entry stack (used by entry.S .L_at_el1 via adrp/add before the C entry
+ * runs).  Lives in this image's BSS so an SP-less EL1 hand-off (QEMU
+ * -kernel resets SP to 0; some bare-metal paths too) still gets a valid
+ * stack INSIDE the loaded image — mkxnuimg places the payload manifest
+ * only after the whole loader binary, so 64 KiB here stay clear.
+ */
+__attribute__((aligned(16)))
+uint8_t xldr_entry_stack[0x10000];
+
 static char g_cmdline[MAX_CMDLINE];
 static const char default_cmdline[] =
 	"serial=3 -v debug=0x8e keepsyms=1 rd=md0 rootdev=md0 "

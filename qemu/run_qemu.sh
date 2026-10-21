@@ -67,11 +67,11 @@ tail -40 build/qemu.trace 2>/dev/null || echo "(no trace)"
 echo "== serial log (build/serial.txt) =="
 cat build/serial.txt 2>/dev/null || echo "(empty)"
 
-grep -aq "HACKIOS xnuloader" qemu/out/qemu.log || {
+grep -aq "HACKIOS xnuloader" build/serial.txt || {
 	echo "FAIL: loader banner not seen on the UART" >&2
 	exit 1
 }
-grep -aq "XLDR PANIC" qemu/out/qemu.log || {
+grep -aq "XLDR PANIC" build/serial.txt || {
 	echo "FAIL: loader never reached its panic waypoint (expected in this launcher: no payload manifest)" >&2
 	exit 1
 }

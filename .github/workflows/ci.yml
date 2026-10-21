@@ -19,8 +19,7 @@ jobs:
       - name: Python syntax checks (repo tooling only; vendored xnu/lldbmacros
           py2 sources are excluded)
         run: |
-          python3 -m py_compile mkxnuimg.py
-          python3 -m py_compile userland/*.py
+          python3 -m py_compile mkxnuimg.py xl tools/*.py userland/*.py userland/ipsw/*.py
       - name: Shell syntax checks
         run: |
           set -e
@@ -41,12 +40,7 @@ jobs:
       - name: M1 packer smoke (placeholder kernel)
         run: |
           mkdir -p build out
-          python3 - <<'PY'
-          import struct
-          # minimal arm64 Mach-O header (MH_EXECUTE, no load commands)
-          hdr = struct.pack('<IIIIIIii', 0xFEEDFACF, 0x0100000C, 0, 2, 0, 0, 0, 0)
-          open('build/placeholder.macho', 'wb').write(hdr + b'\x00' * 4096)
-          PY
+          python3 tools/mk_placeholder_kernel.py build/placeholder.macho
           python3 mkxnuimg.py --out out/boot.m1.img \
             --loader out/xnuloader.bin --kernel build/placeholder.macho \
             --cmdline "serial=3 -v"
@@ -60,18 +54,17 @@ jobs:
 
   qemu-smoke:
     runs-on: ubuntu-latest
+    needs: host-tests
     steps:
       - uses: actions/checkout@v4
-      - name: Install cross toolchain + qemu
+      - name: Install cross toolchain + QEMU
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
-            qemu-system-arm qemu-system-data
-      - name: Boot the loader under qemu -M virt
-        run: bash qemu/run_qemu.sh
-      - name: Upload serial log
-        uses: actions/upload-artifact@v4
-        with:
-          name: qemu-serial-log
-          path: qemu/out/qemu.log
+            qemu-system-arm qemu-system-misc
+      - name: Rehearse the full boot-chain front-end under QEMU
+        run: make qemu
+      - name: Show the verified serial log
+        if: always()
+        run: cat build/serial.txt || true
