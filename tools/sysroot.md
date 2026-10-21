@@ -47,10 +47,10 @@ Run these and confirm every path exists before wiring the toolchain up:
 
 ```
 iPhoneOS16.4.sdk/
-    usr/include/TargetConditionals.h      # dropped by Apple toolchains, mandatory include
+    usr/include/TargetConditionals.h      # self-compilation include, present in every SDK
     usr/include/mach/mach.h
     usr/include/sys/syscall.h             # matches bsd/kern/syscalls.master numbering
-    usr/include/ar && usr/lib/libSystem.tbd
+    usr/lib/libSystem.tbd
 ```
 
 (`.tbd` = *text-based dylib stubs*. Our `ld64` from cctools-port reads

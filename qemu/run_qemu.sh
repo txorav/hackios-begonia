@@ -56,11 +56,16 @@ timeout 45 qemu-system-aarch64 \
 	-M virt -cpu cortex-a57 -smp 1 -m 2048 \
 	-nic none \
 	-kernel build/xnuloader_qemu.elf \
-	-display none -serial stdio \
-	> qemu/out/qemu.log 2>&1 || true
+	-display none -serial file:build/serial.txt \
+	-d guest_errors,int,cpu_reset -D build/qemu.trace \
+	> build/qemu-stderr.log 2>&1 || true
 
-echo "== serial log (qemu/out/qemu.log) =="
-cat qemu/out/qemu.log
+echo "== qemu stderr (build/qemu-stderr.log) =="
+cat build/qemu-stderr.log
+echo "== guest cpu exception trace tail (build/qemu.trace) =="
+tail -40 build/qemu.trace 2>/dev/null || echo "(no trace)"
+echo "== serial log (build/serial.txt) =="
+cat build/serial.txt 2>/dev/null || echo "(empty)"
 
 grep -aq "HACKIOS xnuloader" qemu/out/qemu.log || {
 	echo "FAIL: loader banner not seen on the UART" >&2

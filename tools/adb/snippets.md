@@ -2,86 +2,88 @@
 
 Scope of this folder: **read-only or explicitly push-safe helpers** used
 over `adb` against the test device (`begonia`, Xiaomi Redmi Note 8 Pro,
-MT6785). Everything here predates the moment real work happens — the
-device first usually enters BROM via mtkclient (that is Phase 1/2
-territory in `xnuloader/`, not ours). adb sessions matter in two spots:
+MT6785). The device first enters BROM via mtkclient for Phase 1–2 work
+(territory of `xnuloader/`, not ours); adb matters in two spots:
 
-1. **Pre-flash state audit** (booted Android): confirming variant, MIUI
-   version, unlocked bootloader, partition table sanity. Read-only.
-2. **Post-boot research device shell**: once XNU userland M5/M6 work runs,
+1. **Pre-flash state audit** (while normal Android/MIUI is still booted):
+   confirming variant, MIUI build, bootloader state, and grabbing the
+   on-device evidence the bring-up plan wants saved (cmdline, `/proc/iomem`,
+   the kernel FDT). All read-only.
+2. **Post-restore research shell** (iPhoneOS 16.5/20F66 rootfs volume):
    snapshots of the files our patch scripts touch
-   (`userland/apply_rootfs_patches.sh`) so multiple agents reproduce the
-   *exact same* edits.
+   (`userland/apply_rootfs_patches.sh`) so different agents reproduce the
+   *exact same* edits on a fresh volume.
 
-## Ground rules (every snippet in here obeys them)
+## Ground rules (every snippet here obeys them)
 
-* Read-only unless the snippet itself says its writes are limited to
-  `/sdcard/hackios/**`.
-* Nothing here ever becomes part of a check that *fails* the build —
-  adb is a device-state diagnostic, not CI.
-* No snippet ever uses `fastboot unlock`-class destructive operations;
-  bootloader unlocking is documented once in
-  `docs/hardware_map_mt6785.md` §6 and is operator-manual.
+* Read-only unless the snippet itself documents writes limited to
+  `/sdcard/hackios/**` (`create_patches.sh` is the only one).
+* Nothing in here gates or fails a build — device-state diagnostics only.
+* No destructive bootloader flows in this folder; bootloader notice is
+  documented once in `tools/adb/snippets.md` — operator-manual, as noted
+  in `docs/hardware_map_mt6785.md` §4–§5 context.
 
-## 1. One-liners (all safe/read-only)
+## 1. Pre-flash one-liners (all safe / read-only)
 
-Boot the device into its normal Android system, USB debugging on:
-
-```
-adb shell getprop ro.product.model          # expect: begonia? (MIUI reports "Redmi Note 8 Pro")
-adb shell getprop ro.build.version.release  # Android side version
-adb shell getprop ro.build.version.incremental  # MIUI increment
-adb shell getprop ro.product.model boston   # NOT a real MTK — reference: A/B partitioning state
-```
-
-(the two `getprop` lines that need *root* — run through `su -c`; the phone
-must have Magisk/kernelSU first for anything else to be possible)
+With USB debugging enabled (Bootloader-alert engine, normal Android):
 
 ```
-adb shell su -c cat /proc/cmdline                       # confirms which console= ... lk passed
-adb shell su -c cat /proc/iomem > HOST_FDT_SNAPSHOT     # verify docs/hardware_map § 0x47c00000-0x47FFFFFF carveout here
-adb shell su -c 'cat /sys/firmware/fdt | base64' > host-devicetree.b64
-adb shell su -c 'ls -l /sys/firmware/fdt' > HOST_FDT_LSB
+adb shell getprop ro.product.model                  # model (Redmi Note 8 Pro class)
+adb shell getprop ro.product.device                 # expect: begonia
+adb shell getprop ro.build.version.release          # Android version
+adb shell getprop ro.build.version.incremental      # MIUI increment
 ```
 
-The `0x47c00000..0x47FFFFFF` carveout (ATF/SCP/SSPM/TEE) from
-`hardware_map_mt6785.md` §2 is the one property every XNU-side mapping
-must *not* touch; `/proc/iomem` output is the on-device proof our plan
-asks for — save it before flashing anything.
+These need a rooted (Magisk/KernelSU'd) test device, which is fine exactly
+at this stage (`su` will run on Android side — a plain `adb shell` line
+omits root for cascading these into a single log):
 
 ```
-adb reboot bootloader          # enters lk bootloader
-fastboot getvar all            # confirm boot_a/slot state, 'same device' match
-fastboot flash boot ../out/boot.img    # our assembled image (mkxnuimg.py output)
+adb shell su -c 'cat /proc/cmdline' > haul-proc-cmdline.log
+adb shell su -c 'cat /proc/iomem' > haul-proc-iomem.log
+adb shell su -c 'cat /sys/firmware/fdt' | base64 > haul-kfdt.b64
 ```
 
-(`fastboot flash boot …` **is** a write; it is listed here because it is
-the contract-relevant one — `hardware_map §5` expects our image+SPL
-kernel landing at `0x40080000`. Read-only alternative first:
-`fastboot boot out/boot.img`.)
+The `0x47c00000–0x47FFFFFF` carveout (ATF/SCP/SSPM/TEE) from
+`hardware_map_mt6785.md` §2 is the block the XNU-side mapping must *never*
+include; check `haul-proc-iomem.log` for it before the first flash.
 
-## 2. `create_patches.sh` — baseline + drift diff helper
+## 2. Bootloader (lk) stage — the one *write* in our flow
 
-One-shot helper (getopts-checked; refuses to run outside `/sdcard/hackios/`):
+```
+adb reboot bootloader           # enter lk
+fastboot getvar all             # read-only audit first, always
+fastboot boot out/boot.img      # read-only alternative: temp boot, nothing written
+fastboot flash boot out/boot.img    # the ONE write: our mkxnuimg.py image
+```
+
+`hardware_map_mt6785.md` §5 expects kernel landing at `0x40080000` —
+check `fastboot getvar all` output matches what mkbootimg declared
+(`--base 0x40078000 --kernel_offset 0x00008000 ...`) before flashing.
+
+## 3. Research-shell snapshotting — `create_patches.sh`
+
+One-shot helper (getopts-checked; refuses output outside `/sdcard/hackios/`):
 
 ```
 adb shell mkdir -p /sdcard/hackios
 adb push create_patches.sh /sdcard/hackios/create_patches.sh
-adb shell /sdcard/hackios/create_patches.sh -h
-adb shell /sdcard/hackios/create_patches.sh       # first run → /sdcard/hackios/patches/<name>.baseline
+adb shell /sdcard/hackios/create_patches.sh -h      # usage
+adb shell /sdcard/hackios/create_patches.sh         # run 1 → patches/<name>.baseline
 adb pull /sdcard/hackios/patches ./patches-baseline
 ```
 
-Then boot the ramdisk (M4/M5 userland moment) locally and re-run — the
-second invocation over the same folder produces `<name>.patch` files when
-the live file changed from baseline, so you can see exactly what our
-patches-vs-stock identity looks like *on the target device*, not just in
-our simulated ramdisk.
+After userland patches land (M4/M5), re-run the same command — it then
+emits `<name>.patch` whenever the live file drifted from baseline, so the
+on-device patch identity is recorded the way `userland/patch_rootfs.sh`
+expects it (same block order, same target set).
 
-## 3. What NOT to do here
+## 4. What NOT to do in this folder
 
-* Never `adb remount` on a research fruit — it is a no-op for APFS
-  volatile disks and it triggers the "SEPreservation" path that can re-seal
-  SSV (see `userland/patches/sandbox-notes.md` for the SSV waiver).
-* Never test with `adb root` from iOS-side processes — those would be
-  Step 1 of the bring-up, not a validate helper.
+* No **`adb remount`- or sealer-adjacent** tricks: our rootfs-side story is
+  "we never verify any SSV seal, by construction" (see
+  `userland/patches/sandbox-notes.md`); remount games add nothing and only
+  trip MIUI integrity tooling on the Android side.
+* Do not escalate to *"adb root for everything" habits*: snippets are
+  diagnostics; any *write* path belongs in its operator-run script under
+  userland/tools with a digest check.

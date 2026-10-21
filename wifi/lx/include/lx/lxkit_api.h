@@ -225,6 +225,13 @@ struct lxkit_touch_event {
 	u32 timestamp_ns; /* lx_ktime_get_ns() at packet decode             */
 };
 
+/* Storage publish/unpublish (drivers/mt6785/*, lxkit_api.cpp) - drivers
+ * call publish() when their block device is ready; consumers learn about
+ * the device through the lxkit_storage_client ops registered above.     */
+int  lxkit_storage_publish(struct lx_device *dev, u32 medium, u64 block_size,
+    u64 num_blocks, void *queue, void *drv_priv);
+void lxkit_storage_unpublish(struct lx_device *dev);
+
 /* FocalTouchIOHID registers a callback through this structure from ITS OWN
  * image when it binds against the LxKitTouchNub (see kexts/FocalTouchIOHID/
  * FocalTouchLxGlue.cpp). */

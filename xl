@@ -1,152 +1,169 @@
 #!/usr/bin/env python3
-"""
-xl — HackiOS begonia host utility.
-
-Streams kernels/logs over USB fastboot and serial (plan §2, `xl`), and drives
-the boot-log-reboot diagnose loop for the bring-up milestones.
-
-Subcommands:
-    xl boot <boot.img>            reboot into xnuloader (fastboot boot)
-    xl log [-d /dev/ttyUSBX]      tail the debug UART into out/console.log
-    xl panic                      pull last-panic RAMOOPS record via adb/TWRP?
-                                  (prints instructions when no device adb)
-    xl list                       enumerate fastboot/adb devices present
-    xl payload <dir>              summarize an unpacked payload (sizes)
-Requires: `fastboot` (or `adb`); optional `pyserial` for the log tail.
-"""
+# xl — host-side companion for hackios-begonia.
+#
+#   xl boot out/boot.img        # fastboot boot the staged image (M1 marker)
+#   xl logs                     # attach serial (getty) and dump `pe` output
+#   xl pstore                   # pull the ramoops XLDR panic trace from TWRP/adb
+#   xl reboot                   # adb reboot into bootloader
+#   xl upload-sysroot host      # push build/ artifacts out
+#   xl wait-state M1            # poll the UART for a milestone banner
+#
+# The device    : Redmi Note 8 Pro (`begonia`), UART0 @ 0x11002000 or USB.
+# Requirements  : fastboot, adb, pyserial (optional; for `xl logs`).
+#
+# Milestone banners (docs/milestones.md):
+#   M1 "xnuloader on begonia"   M2 "xnu-banner"   M3 "8 cores online"
+#   M4 "root:md0 shell"         M5 "launchd up"   M6 "SpringBoard"
 import argparse
 import os
 import subprocess
 import sys
 import time
 
-OUT_DEFAULT = "out"
+MILESTONES = {
+    "M1": b"xnuloader on begonia",
+    "M2": b"xnu-banner",
+    "M3": b"8 cores online",
+    "M4": b"root:md0 shell",
+    "M5": b"launchd up",
+    "M6": b"SpringBoard",
+}
+PSTORE_MAGIC = b"XLDRPANIC"
 
 
-def run(cmd, **kw):
-    try:
-        return subprocess.run(cmd, capture_output=True, text=True, **kw)
-    except FileNotFoundError:
-        return None
-
-
-def die(msg, code=2):
-    print(f"xl: {msg}", file=sys.stderr)
-    sys.exit(code)
-
-
-def cmd_list(_args):
-    fb = run(["fastboot", "devices"])
-    adb = run(["adb", "devices"])
-    print("fastboot:", repr(fb.stdout) if fb else "fastboot not installed")
-    print("adb:     ", repr(adb.stdout) if adb else "adb not installed")
+def _which(*names):
+    for name in names:
+        path = subprocess.run(["which", name], capture_output=True) \
+            .stdout.decode().strip()
+        if path:
+            return path
+    sys.exit(f"required tool not found: {names}")
 
 
 def cmd_boot(args):
-    img = args.bootimg
-    if not os.path.isfile(img):
-        die(f"boot.img not found: {img}")
-    r = run(["fastboot", "devices"])
-    if r is None:
-        die("fastboot missing (apt install fastboot, or see tools/README.md)")
-    if not r.stdout.strip():
-        die("no fastboot device; put the phone in fastboot mode first")
-    print(f"booting {img} (fastboot boot — RAM only, nothing flashed)")
-    r = run(["fastboot", "boot", img])
-    if r and r.returncode == 0:
-        print("OK: image handed off to the kernel; watch the console with "
-              "`xl log` and capture cycles with `xl panic`.")
-        return 0
-    die(f"fastboot failed: {r.stderr if r else 'unknown'}", 2)
+    fb = _which("fastboot")
+    if not os.path.isfile(args.image):
+        sys.exit(f"image not found: {args.image}")
+    print(f"[xl] {fb} boot {args.image}")
+    subprocess.run([fb, "boot", args.image], check=False)
+    print("[xl] sent. watch with `xl logs` / `xl pstore` after a warm reset")
 
 
-def cmd_log(args):
-    tty = args.device or "/dev/ttyUSB0"
-    rate = args.baud
-    fn = args.out
+def cmd_reboot(args):
+    adb = _which("adb")
+    subprocess.run([adb, *args.target, "reboot"] +
+                   ["bootloader" if args.bootloader else ""],
+                   check=False)
+    print("[xl] reboot requested")
+
+
+def cmd_pstore(args, out_dir="uart_capture"):
+    """Pull persistent ramoops trace at phys 0x47df0000 (64 KiB) that
+    xnuloader stamps with XLDRPANIC; TWRP can `dd` it onto storage."""
+    adb = _which("adb")
+    os.makedirs(out_dir, exist_ok=True)
+    p = os.path.join(out_dir, "ramoops_xldr.bin")
+    print(f"[xl] pulling ramoops (XLDRPANIC @ 0x47df0000) → {p}")
+    # TWRP/OrangeFox recovery shell exposes /dev/block/by-name/expdb etc.;
+    # the ramoops region is a raw pstore address, not a block device, so we
+    # dd from the mapped physical frame exposed by the recovery kernel.
+    script = ("/dev/null || true")
+    subprocess.run([adb, "shell",
+                    f"dd if=/dev/pstore/console-ramoops0 of={p} bs=65536 "
+                    f"count=1 2>&1 || {script}"], check=False)
+    # fallback: pull any pstore records the recovery produced
+    subprocess.run([adb, "-e", "pull", "/sys/fs/pstore", out_dir],
+                   check=False)
+    data = b""
+    if os.path.isfile(p):
+        with open(p, "rb") as f:
+            data = f.read()
+    if PSTORE_MAGIC in data:
+        off = data.index(PSTORE_MAGIC)
+        print("[xl] XLDRPANIC found at offset", off)
+        print(data[off:off + 2048].decode(errors="replace"))
+    else:
+        print("[xl] no XLDRPANIC marker yet (loader never panicked, or "
+              "pstore region not pulled — see docs/01_phase1)")
+
+
+def cmd_logs(args):
     try:
-        import serial            # pyserial only needed for this subcommand
+        import serial  # pyserial, optional
     except ImportError:
-        die("pyserial needed for `xl log` (pip3 install pyserial)")
-    if not os.path.exists(tty):
-        die(f"serial device not found: {tty}")
-    with serial.Serial(tty, rate, timeout=1) as ser, open(fn, "a") as f:
-        print(f"tailing {tty}@{rate} -> {fn} (Ctrl-C to stop)")
-        try:
-            while True:
-                data = ser.read(4096)
-                if data:
-                    sys.stdout.write(data.decode("utf-8", "replace"))
-                    sys.stdout.flush()
-                    f.write(data.decode("utf-8", "replace"))
-        except KeyboardInterrupt:
-            return 0
+        print("pyserial not installed: `pip3 install pyserial`")
+        cmd_pstore(args)                       # degrade to pstore pull
+        return
+    port = serial.Serial(args.port, 115200, timeout=1)
+    print(f"[xl] streaming {args.port} @115200 — ^C to stop")
+    try:
+        while True:
+            chunk = port.read(1024)
+            if chunk:
+                sys.stdout.buffer.write(chunk)
+                sys.stdout.buffer.flush()
+    except KeyboardInterrupt:
+        print("\n[xl] closed")
 
 
-def cmd_panic(_args):
-    adb = run(["adb", "devices"])
-    connected = adb and ("device" in adb.stdout)
-    if connected:
-        print("device up: pulling pstore/ramoops info")
-        os.makedirs(OUT_DEFAULT, exist_ok=True)
-        r = run(["adb", "shell", "cat /proc/pstore/console-ramoops > /data/local/tmp/p.0"])
-        if r:
-            p = run(["adb", "pull", "/data/local/tmp/p.0", f"{OUT_DEFAULT}/console-ramoops.txt"])
-            print(p.stdout if p else "(pull failed)")
-        return 0
-    print("no adb device. If the phone rebooted into TWRP after a watchdog "
-          "loop:\n"
-          "  1. adb shell mount -a? no — TWRP shell:\n"
-          "  2. dd if=/dev/mem skip=<0x47df0000/4096> of=/tmp/x  (rooted only)\n"
-          "  3. grep -a XLDRPANIC /tmp/x | head\n"
-          "otherwise re-enter fastboot and `xl boot out/boot.img` again.")
+def cmd_wait_state(args):
+    try:
+        import serial
+    except ImportError:
+        sys.exit("pyserial not installed: `pip3 install pyserial`")
+    needle = MILESTONES.get(args.milestone)
+    if needle is None:
+        sys.exit(f"unknown milestone {args.milestone}; known: "
+                 f"{', '.join(MILESTONES)}")
+    port = serial.Serial(args.port, 115200, timeout=1)
+    deadline = time.time() + args.timeout
+    print(f"[xl] waiting for {args.milestone} banner={needle!r} "
+          f"on {args.port} (timeout={args.timeout}s)")
+    while time.time() < deadline:
+        if needle in port.read(512):
+            print(f"[xl] {args.milestone} reached")
+            return
+    sys.exit(f"[xl] {args.milestone} NOT reached within {args.timeout}s")
 
 
-def cmd_payload(args):
-    import struct
-    data = open(args.dir, "rb").read()
-    if data[:8] != b"XLDRPAY1":
-        die("not an XLDRPAY1 payload (needs raw boot-payload.img, not .gz)")
-    ver, count = struct.unpack_from("<II", data, 8)
-    total = struct.unpack_from("<Q", data, 16)[0]
-    fb_base, fb_size = struct.unpack_from("<QQ", data, 48)
-    fb_wh = struct.unpack_from("<IIII", data, 64)
-    print(f"payload ver={ver} sections={count} total={total:#x}")
-    print(f"fb base={fb_base:#x} size={fb_size:#x} w/h/s/d={fb_wh}")
-    base = 72
-    for i in range(count):
-        name, flags, _r, off, size = struct.unpack_from("<8sIIQQ", data, base + i * 32)
-        print(f"  [{i}] {name.decode().rstrip(chr(0)):8s} flags={flags} "
-              f"off={off:#x} size={size:#x}")
-    return 0
+def cmd_upload_sysroot(args):
+    adb = _which("adb")
+    for f in [args.host_dir + "/" + x for x in os.listdir(args.host_dir)]:
+        print(f"[xl] push {f}")
+        subprocess.run([adb, "push", f, "/cache/"], check=False)
 
 
 def main():
-    p = argparse.ArgumentParser(prog="xl", description=__doc__)
-    sub = p.add_subparsers(dest="cmd", required=True)
+    ap = argparse.ArgumentParser(prog="xl")
+    sub = ap.add_subparsers(dest="cmd", required=True)
 
-    pb = sub.add_parser("boot")
-    pb.add_argument("bootimg")
-    pb.set_defaults(fn=cmd_boot)
+    boot = sub.add_parser("boot", help="fastboot boot a staged image")
+    boot.add_argument("image")
+    boot.set_defaults(func=cmd_boot)
 
-    pl = sub.add_parser("log")
-    pl.add_argument("-d", "--device", default="/dev/ttyUSB0")
-    pl.add_argument("--baud", type=int, default=115200)
-    pl.add_argument("-o", "--out", default=f"{OUT_DEFAULT}/console.log")
-    pl.set_defaults(fn=cmd_log)
+    logs = sub.add_parser("logs", help="stream UART0 serial output")
+    logs.add_argument("--port", default="/dev/ttyUSB0")
+    logs.set_defaults(func=cmd_logs)
 
-    pp = sub.add_parser("panic")
-    pp.set_defaults(fn=cmd_panic)
+    ps = sub.add_parser("pstore", help="pull ramoops / pstore panic traces")
+    ps.set_defaults(func=cmd_pstore)
 
-    pal = sub.add_parser("list")
-    pal.set_defaults(fn=cmd_list)
+    rb = sub.add_parser("reboot", help="adb reboot (optionally to bootloader)")
+    rb.add_argument("--bootloader", action="store_true")
+    rb.set_defaults(func=cmd_reboot)
 
-    pd = sub.add_parser("payload")
-    pd.add_argument("dir")
-    pd.set_defaults(fn=cmd_payload)
+    wait = sub.add_parser("wait-state", help="wait for a milestone banner")
+    wait.add_argument("milestone", choices=list(MILESTONES))
+    wait.add_argument("--port", default="/dev/ttyUSB0")
+    wait.add_argument("--timeout", type=int, default=180)
+    wait.set_defaults(func=cmd_wait_state)
 
-    args = p.parse_args()
-    args.fn(args)
+    up = sub.add_parser("upload-sysroot", help="push build/ artifacts to device")
+    up.add_argument("host_dir")
+    up.set_defaults(func=cmd_upload_sysroot)
+
+    args = ap.parse_args()
+    args.func(args)
 
 
 if __name__ == "__main__":

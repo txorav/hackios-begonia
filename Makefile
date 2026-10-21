@@ -74,6 +74,7 @@ boot.img: .init
 	else \
 	  echo "kernelcache missing — run the kernel build first (see kernel target)."; \
 	  echo "M1-only loader test image instead:"; \
+	  $(PYTHON) tools/mk_placeholder_kernel.py $(BUILD)/placeholder.macho; \
 	  $(PYTHON) mkxnuimg.py --out $(OUT)/boot.img.m1 \
 	     --loader $(OUT)/xnuloader.bin --kernel $(BUILD)/placeholder.macho; \
 	fi
