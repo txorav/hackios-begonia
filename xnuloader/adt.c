@@ -421,7 +421,7 @@ adt_build(const struct adt_overrides *o)
 		prop_str(n, "name", "uart0");
 		prop_reg(n, 0x11002000u, 0x1000u);
 		prop_u32be(n, "clock-frequency", 26000000u);
-		prop_u32be(n, "interrupt", 0);             /* SPI nbr verified on device */
+		prop_u32be(n, "interrupt", 0x73u);         /* SPI 115 (0x73) from begonia DTS */
 	}
 	int msdc = node_new("msdc1", armio);
 	{
@@ -429,14 +429,14 @@ adt_build(const struct adt_overrides *o)
 		prop_str(n, "name", "msdc1");
 		prop_reg(n, 0x11240000u, 0x10000u);
 		prop_u32be(n, "clock-frequency", 200000000u);
-		prop_u32be(n, "interrupt", 0);
+		prop_u32be(n, "interrupt", 0x66u);         /* SPI 102 (0x66) from begonia DTS */
 	}
 	int ufsn = node_new("ufs0", armio);
 	{
 		struct adt_spec_node *n = &g_nodes[ufsn];
 		prop_str(n, "name", "ufs0");
 		prop_reg(n, 0x11270000u, 0x100000u);
-		prop_u32be(n, "interrupt", 0);
+		prop_u32be(n, "interrupt", 0x68u);         /* SPI 104 (0x68) from begonia DTS */
 	}
 	int i2c0 = node_new("i2c0", armio);
 	{

@@ -25,8 +25,8 @@ the in-tree XNU sources (`xnu/pexpert/pexpert/arm64/boot.h`,
 | MMU granules | 4 KiB, 16 KiB, 64 KiB (`ID_AA64MMFR0_EL1.TGran16` supported) — **XNU uses 16 KiB** |
 | GIC | ARM GICv3: `GICD` @ `0x0c000000` (~256 KiB region), `GICR` base `0x0c040000` (per-CPU redistributor, 0x20000 stride for 8 CPUs) |
 | Generic timer | Architectural timer; MediaTek frequency **13 MHz** (read `CNTFRQ_EL0` at runtime — never hardcode Apple's 24 MHz) |
-| Storage | UFS 2.1 `ufshcd-mtk` @ `0x11270000`; MicroSD `msdc1` @ `0x11240000` |
-| UART (debug) | UART0 @ `0x11002000` (16550-style, 4-byte reg stride) |
+| Storage | UFS 2.1 `ufshcd-mtk` @ `0x11270000` (SPI 104 / 0x68); MicroSD `msdc1` @ `0x11240000` (SPI 102 / 0x66) |
+| UART (debug) | UART0 @ `0x11002000` (16550-style, 4-byte reg stride, SPI 115 / 0x73, 26 MHz) |
 | I2C (touch) | I2C @ `0x11007000`, touchscreen `focaltech,fts` (alt: `goodix,gt9886`) at addr `0x38` |
 | Display | 1080×2340 IPS LCD, MIPI-DSI, framebuffer pre-initialized by MediaTek `lk` bootloader |
 | Boot ROM / firmware | MediaTek BROM + `lk` (little kernel) + ARM Trusted Firmware BL31 (PSCI ≥ 0.2) |

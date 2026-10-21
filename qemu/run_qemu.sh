@@ -22,10 +22,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+[ -d "/media/dev/work/tcbin" ] && export PATH="/media/dev/work/tcbin:${PATH}"
+
 # cross-toolchain detection without deprecated `which`; prints PATH
 # diagnostics when missing so CI failures are explainable.
 find_cc() {
-	for c in aarch64-none-elf-gcc aarch64-linux-gnu-gcc aarch64-linux-gnu-gcc-14 aarch64-linux-gnu-gcc-13; do
+	for c in aarch64-none-elf-gcc aarch64-linux-gnu-gcc aarch64-linux-android-gcc aarch64-linux-gnu-gcc-14 aarch64-linux-gnu-gcc-13; do
 		if command -v "$c" >/dev/null 2>&1; then
 			command -v "$c"
 			return 0

@@ -19,12 +19,16 @@ jobs:
       - name: Python syntax checks (repo tooling only; vendored xnu/lldbmacros
           py2 sources are excluded)
         run: |
-          python3 -m py_compile mkxnuimg.py xl tools/*.py userland/*.py userland/ipsw/*.py
+          python3 -m py_compile mkxnuimg.py xl tools/*.py userland/*.py userland/ipsw/*.py tests/*.py
       - name: Shell syntax checks
         run: |
           set -e
           for f in $(git ls-files '*.sh'); do bash -n "$f"; done
           echo "all shell scripts parse"
+      - name: Begonia hardware contract & boot image evaluation
+        run: |
+          mkdir -p build out
+          python3 -m unittest -v tests/test_begonia_contract.py
 
   loader-aarch64:
     runs-on: ubuntu-latest

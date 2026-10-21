@@ -13,11 +13,11 @@ PYTHON     ?= python3
 BUILD      := build
 OUT        := out
 
-_arch_cc := $(shell which aarch64-none-elf-gcc aarch64-linux-gnu-gcc 2>/dev/null | head -1)
+_arch_cc := $(shell PATH="$(PATH):/media/dev/work/tcbin" which aarch64-none-elf-gcc aarch64-linux-gnu-gcc aarch64-linux-android-gcc 2>/dev/null | head -1)
 cross_check:
 ifeq ($(strip $(_arch_cc)),)
 	@echo ""
-	@echo "No aarch64 cross gcc found on PATH (aarch64-none-elf / aarch64-linux-gnu)."
+	@echo "No aarch64 cross gcc found on PATH (aarch64-none-elf / aarch64-linux-gnu / aarch64-linux-android)."
 	@echo "Install with scripts/setup_host.sh or tools/install_llvm_toolchain.sh"
 	@echo ""
 	@exit 1
@@ -48,13 +48,13 @@ kernel:
 # ---- 3. platform kexts --------------------------------------------------
 kexts: cross_check
 	@echo "== [3/6] platform kexts (GICv3/expert/stubs) =="
-	$(MAKE) -f kexts/build.mk build || true
+	$(MAKE) -C kexts -f build.mk build || true
 	@echo "(see kexts/README for per-kext build notes)"
 
 # ---- 4. userland ramdisk (M4) -------------------------------------------
 ramdisk:
 	@echo "== [4/6] ramdisk =="
-	bash userland/ramdisk/mkramdisk.sh $(OUT) || true
+	bash userland/ramdisk/mkramdisk.sh --out $(OUT)/ramdisk.img --no-shell || true
 
 # ---- 5. payload + boot.img ----------------------------------------------
 payload: xnuloader
@@ -79,13 +79,15 @@ boot.img: .init
 	     --loader $(OUT)/xnuloader.bin --kernel $(BUILD)/placeholder.macho; \
 	fi
 
-# ---- 5b. host unit tests (no cross toolchain needed) ----------------------
+# ---- 5b. host unit tests & begonia contract evaluation ------------------
 tests: .init
 	@echo "== [2f/6] host unit tests (loader FDT/ADT logic) =="
 	@cd xnuloader && \
 	  gcc -std=gnu11 -O1 -Wall -o $(CURDIR)/build/xldr_test_host \
 	      test_host.c adt.c fdt.c string.c && \
 	  $(CURDIR)/build/xldr_test_host
+	@echo "== begonia hardware contract & boot image evaluation =="
+	$(PYTHON) -m unittest -v tests/test_begonia_contract.py
 
 # ---- QEMU rehearsal (guide Phase A) ---------------------------------------
 qemu:

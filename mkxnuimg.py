@@ -208,6 +208,7 @@ def make_boot_img(args):
     hdr[off+8:off+16] = struct.pack("<Q", dtb_addr)
 
     img = bytearray(hdr)
+    img += b"\x00" * (align(len(hdr), page) - len(hdr))
     img += kernel_blob
     img += b"\x00" * (align(len(kernel_blob), page) - len(kernel_blob))
     # ramdisk slot is empty (this loader carries its own)
