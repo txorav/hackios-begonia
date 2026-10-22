@@ -91,9 +91,9 @@ fdt_init(uint64_t base)
 	if (total == 0 || total > 0x400000) {
 		return FDT_E_TRUNC;
 	}
-	fdt_struct_off  = be32(fdt + 12);
-	fdt_struct_size = be32(fdt + 32);
-	fdt_strings_off = be32(fdt + 16);
+	fdt_struct_off  = be32(fdt + 8);
+	fdt_strings_off = be32(fdt + 12);
+	fdt_struct_size = be32(fdt + 36);
 	if (fdt_struct_off >= total || fdt_struct_off == 0) {
 		return FDT_E_FMT;
 	}
@@ -299,7 +299,7 @@ fdt_mem_size(void)
 int
 fdt_reserves(uint64_t out[][2], int max)
 {
-	uint64_t rsv_off = be64(fdt + 8);
+	uint32_t rsv_off = be32(fdt + 16);
 	int n = 0;
 	const volatile uint8_t *p = fdt + rsv_off;
 	while (n < max) {

@@ -59,7 +59,7 @@ def build_payload(args, out_dir):
     if len(loader) > 0x40000:
         sys.exit(f"error: loader too big ({len(loader):#x} > 0x40000)")
 
-    m_off = align(len(loader), 0x10000)          # manifest page-aligned gap
+    m_off = max(0x30000, align(len(loader), 0x10000))  # safe margin beyond loader BSS (128 KiB)
 
     cmdline = bytearray()
     if args.cmdline:
@@ -109,7 +109,8 @@ def build_payload(args, out_dir):
     for name, flags, off, size in sections:
         man += name.ljust(8, b"\x00")
         man += struct.pack("<IIQQ", flags, 0, off, size)
-    man += struct.pack("<II", len(cmdline), len(cmdline))
+    cmd_offset_field = cmd_off if cmdline else 0
+    man += struct.pack("<II", cmd_offset_field, len(cmdline))
     assert len(man) == MANIFEST_SIZE, f"manifest size {len(man)} != {MANIFEST_SIZE}"
 
     payload = bytearray()

@@ -25,34 +25,36 @@ LC_UNIXTHREAD    = 0x05
 def main(out_path):
     cmds = bytearray()
 
-    # LC_SEGMENT_64 __TEXT: empty (vmsize == 0, no sections).
+    # LC_SEGMENT_64 __TEXT: 16 KiB dummy segment.
     # magic(4) + cmdsize(4) + segname(16) + 4xQuad(32) + 4xWord(16) = 72
     segname = b"__TEXT".ljust(16, b"\x00")
-    cmds += struct.pack("<II16sQQQQiiii",
+    cmds += struct.pack("<II16sQQQQIIII",
                         LC_SEGMENT_64, 72, segname,
-                        0x0000000040000000,  # vmaddr
-                        0x0000000000000000,  # vmsize
+                        0x0000000040200000,  # vmaddr (KERNEL_LOAD_BASE)
+                        0x0000000000004000,  # vmsize (16 KiB)
                         0x0000000000000000,  # fileoff
                         0x0000000000000000,  # filesize
                         5, 5, 0, 0)          # maxprot(RX), initprot(RX), nsects, flags
 
-    # LC_UNIXTHREAD (arm64 flavor = 6): 16 GP registers + CPSR + PC.
-    # cmdsize = 8 (cmd) + 4 (flavor) + 4 (count) + count * 8
-    flavor, count = 6, 18
-    thread_hdr = struct.pack("<IIII", LC_UNIXTHREAD, 8 + 4 + 4 + count * 8,
+    # LC_UNIXTHREAD (arm64 flavor = 6): ARM64_THREAD_STATE64 has 34 quads (68 32-bit words).
+    # cmdsize = 4 (cmd) + 4 (cmdsize) + 4 (flavor) + 4 (count) + 34 * 8 = 288 bytes
+    flavor, count = 6, 68
+    thread_hdr = struct.pack("<IIII", LC_UNIXTHREAD, 16 + (count // 2) * 8,
                              flavor, count)
-    thread_hdr += struct.pack(f"<{count}Q", *([0] * count))
+    thread_hdr += struct.pack(f"<{count // 2}Q", *([0] * (count // 2)))
 
     cmds += thread_hdr
 
-    header = struct.pack("<IiiIII",
+    # mach_header_64 is exactly 32 bytes (8 x 32-bit words)
+    header = struct.pack("<IIIIIIII",
                          MH_MAGIC_64,
                          MH_CPUTYPE_ARM64,
-                         0x00000000,     # same-subtype (lib64)
+                         0x00000000,     # cpusubtype
                          MH_FILETYPE_EXEC,
                          2,              # ncmds
-                         len(cmds))      # sizeofcmds
-    header += struct.pack("<i", 0)       # flags: none
+                         len(cmds),      # sizeofcmds
+                         0,              # flags
+                         0)              # reserved
 
     with open(out_path, "wb") as f:
         f.write(header + bytes(cmds))

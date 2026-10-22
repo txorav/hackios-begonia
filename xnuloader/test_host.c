@@ -121,13 +121,14 @@ build_fdt(void)
 	uint32_t total = (str_off + so + 15u) & ~15u;
 	put32be(fdtbuf + 0,  FDT_MAGIC);
 	put32be(fdtbuf + 4,  total);
-	put32be(fdtbuf + 8,  0x28);                    /* rsvmap: single zero entry */
-	put32be(fdtbuf + 12, struct_off);
-	put32be(fdtbuf + 16, str_off);
-	put32be(fdtbuf + 20, 17);                      /* last_comp_version */
-	put32be(fdtbuf + 24, 0);                       /* boot cpuid */
-	put32be(fdtbuf + 28, so);                      /* size_dt_strings */
-	put32be(fdtbuf + 32, struct_size);             /* size_dt_struct */
+	put32be(fdtbuf + 8,  struct_off);              /* off_dt_struct */
+	put32be(fdtbuf + 12, str_off);                 /* off_dt_strings */
+	put32be(fdtbuf + 16, 0x28);                    /* off_mem_rsvmap: single zero entry */
+	put32be(fdtbuf + 20, 17);                      /* version */
+	put32be(fdtbuf + 24, 16);                      /* last_comp_version */
+	put32be(fdtbuf + 28, 0);                       /* boot cpuid */
+	put32be(fdtbuf + 32, so);                      /* size_dt_strings */
+	put32be(fdtbuf + 36, struct_size);             /* size_dt_struct */
 }
 
 /* ---------------- ADT checks ---------------- */

@@ -38,7 +38,7 @@
  * only after the whole loader binary, so 64 KiB here stay clear.
  */
 __attribute__((aligned(16)))
-uint8_t xldr_entry_stack[0x10000];
+uint8_t xldr_entry_stack[0x4000];
 
 static char g_cmdline[MAX_CMDLINE];
 static const char default_cmdline[] =
@@ -162,7 +162,9 @@ xldr_main(uint64_t fdt_pa)
 			}
 		}
 	} else {
-		uart_puts("xlDR: FDT parse failed, using defaults\n");
+		uart_puts("xlDR: FDT parse failed rc ");
+		uart_puthex((uint64_t)fdtrc);
+		uart_puts("\n");
 	}
 	uart_puts("memSize  ");
 	uart_puthex(mem_size);
@@ -175,6 +177,16 @@ xldr_main(uint64_t fdt_pa)
 	uart_puts("payload manifest found; sections: ");
 	uart_puthex(pm->section_count);
 	uart_puts("\n");
+
+	/* If payload sits below 0x50000000, stage it away so KERNEL_LOAD_BASE (0x40200000) does not overlap */
+	if ((uint64_t)(uintptr_t)pm < 0x50000000ull && pm->total_size != 0 &&
+	    0x50000000ull + pm->total_size < DRAM_BASE_DEFAULT + mem_size) {
+		uart_puts("staging payload to 0x50000000 (");
+		uart_puthex(pm->total_size);
+		uart_puts(" bytes)\n");
+		memcpy((void *)0x50000000ull, (const void *)pm, pm->total_size);
+		pm = (const volatile struct payload_manifest *)0x50000000ull;
+	}
 
 	/* Determine active framebuffer: manifest > FDT atag,videolfb > default */
 	uint64_t active_fb = pm->fb_base ? pm->fb_base : (fb_base_dyn ? fb_base_dyn : FB_BASE_DEFAULT);

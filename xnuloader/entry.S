@@ -14,7 +14,7 @@
 _image_header_start:
 	b	xldr_entry_real         /* 0x00 code0 */
 	.word	0                       /* 0x04 code1 */
-	.quad	0                       /* 0x08 text_offset */
+	.quad	0x80000                 /* 0x08 text_offset: 512 KiB from RAM base (0x40080000) */
 	.quad	IMAGE_SIZE              /* 0x10 image_size */
 	.quad	0                       /* 0x18 flags */
 	.space	0x18                    /* 0x20..0x37 reserved */
@@ -117,8 +117,20 @@ xldr_entry_real:
 	 */
 	adrp	x7, xldr_entry_stack
 	add	x7, x7, :lo12:xldr_entry_stack
-	add	x7, x7, #0x10000
+	add	x7, x7, #0x4000
 	mov	sp, x7
+
+	/* Zero BSS from _bss_start to _bss_end */
+	adrp	x2, _bss_start
+	add	x2, x2, :lo12:_bss_start
+	adrp	x3, _bss_end
+	add	x3, x3, :lo12:_bss_end
+.L_clear_bss_loop:
+	cmp	x2, x3
+	b.ge	.L_clear_bss_done
+	str	xzr, [x2], #8
+	b	.L_clear_bss_loop
+.L_clear_bss_done:
 
 	mov	x0, x19
 	bl	xldr_main                   /* C entry, x0 = FDT PA         */

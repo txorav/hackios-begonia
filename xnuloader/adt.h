@@ -17,9 +17,9 @@
 
 #include <stdint.h>
 
-#define ADT_MAX_NODES      128
-#define ADT_MAX_PROPS      24
-#define ADT_MAX_CHILDREN   16
+#define ADT_MAX_NODES      48
+#define ADT_MAX_PROPS      16
+#define ADT_MAX_CHILDREN   12
 
 typedef void *adt_node_t;    /* opaque builder handle */
 

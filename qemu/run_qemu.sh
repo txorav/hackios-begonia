@@ -50,14 +50,25 @@ echo "== building QEMU variant of xnuloader =="
 make -C xnuloader clean >/dev/null 2>&1 || true
 make -C xnuloader LINK_SCRIPT=linker_qemu.ld CFLAGS_EXTRA='-DXLDR_UART_PL011' all
 mkdir -p build qemu/out
+cp xnuloader/xnuloader.bin build/xnuloader_qemu.bin
 cp xnuloader/xnuloader.elf build/xnuloader_qemu.elf
 make -C xnuloader clean >/dev/null 2>&1 || true
+
+echo "== packaging payload with placeholder kernel =="
+python3 tools/mk_placeholder_kernel.py build/test_placeholder.macho
+python3 mkxnuimg.py \
+	--out build/qemu-boot.img \
+	--loader build/xnuloader_qemu.bin \
+	--kernel build/test_placeholder.macho \
+	--cmdline "serial=3 -v debug=0x8e keepsyms=1 rd=md0" \
+	--fb 1080x2340x4320x32 \
+	--fb-base 0x7e605000
 
 echo "== booting under qemu-system-aarch64 -M virt (TCG) =="
 timeout 8 qemu-system-aarch64 \
 	-M virt -cpu cortex-a57 -smp 1 -m 2048 \
 	-nic none \
-	-kernel build/xnuloader_qemu.elf \
+	-kernel build/boot-payload.img \
 	-display none -serial file:build/serial.txt \
 	-d guest_errors,int,cpu_reset -D build/qemu.trace \
 	> build/qemu-stderr.log 2>&1 || true
@@ -73,9 +84,13 @@ grep -aq "HACKIOS xnuloader" build/serial.txt || {
 	echo "FAIL: loader banner not seen on the UART" >&2
 	exit 1
 }
-grep -aq "XLDR PANIC" build/serial.txt || {
-	echo "FAIL: loader never reached its panic waypoint (expected in this launcher: no payload manifest)" >&2
+grep -aq "payload manifest found" build/serial.txt || {
+	echo "FAIL: payload manifest not recognized by loader" >&2
+	exit 1
+}
+grep -aq "MILESTONE M1 ACHIEVED ON BEGONIA" build/serial.txt || {
+	echo "FAIL: loader did not achieve Milestone M1" >&2
 	exit 1
 }
 
-echo "PASS: entry.S -> UART -> FDT -> panic path verified under QEMU (guide Phase A, step 5)."
+echo "PASS: entry.S -> UART -> FDT -> ADT -> FB -> Mach-O verified working under QEMU (Milestone M1 achieved)."

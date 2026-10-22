@@ -20,7 +20,7 @@
 #include <stddef.h>
 #include <string.h>
 
-#define PROP_VAL_MAX 256
+#define PROP_VAL_MAX 64
 
 struct adt_spec_prop {
 	char     name[32];

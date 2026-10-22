@@ -36,7 +36,7 @@ static uint64_t cls_top;    /* max (vmaddr + vmsize) over all segments */
 static void
 record_segment(uint64_t vmaddr, uint64_t vmsize)
 {
-	if (seg_count == 0 || vmaddr < cls_base) {
+	if (vmaddr < cls_base) {
 		cls_base = vmaddr;
 	}
 	if (vmaddr + vmsize > cls_top) {
@@ -134,7 +134,7 @@ macho_load_one(const volatile uint8_t *mh, uint64_t phys_base,
 	}
 
 	if (entry_found) {
-		*entry_out = entry + load_delta;   /* linked VA -> physical PA */
+		*entry_out = (entry == 0) ? 0 : (entry + load_delta);   /* linked VA -> physical PA */
 	}
 	return entry_found ? 0 : -4;
 }
