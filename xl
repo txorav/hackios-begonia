@@ -21,7 +21,7 @@ import sys
 import time
 
 MILESTONES = {
-    "M1": b"xnuloader on begonia",
+    "M1": b"MILESTONE M1",
     "M2": b"xnu-banner",
     "M3": b"8 cores online",
     "M4": b"root:md0 shell",

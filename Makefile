@@ -23,7 +23,7 @@ ifeq ($(strip $(_arch_cc)),)
 	@exit 1
 endif
 
-.PHONY: all cross_check xnuloader kexts kernel ramdisk boot.img payload tests qemu clean init
+.PHONY: all cross_check xnuloader kexts kernel ramdisk boot.img payload tests qemu qemu-ios clean init
 .NOTPARALLEL:
 
 all: xnuloader boot.img
@@ -93,6 +93,10 @@ tests: .init
 qemu:
 	@echo "== QEMU bring-up: loader stage (qemu/README.md) =="
 	bash qemu/run_qemu.sh
+
+qemu-ios:
+	@echo "== QEMU bring-up: full XNU kernel (qemu/run_ios.sh) =="
+	bash qemu/run_ios.sh
 
 # ---- helpers -------------------------------------------------------------
 syscheck:
