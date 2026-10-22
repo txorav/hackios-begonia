@@ -119,6 +119,26 @@ cache_flush_all(void)
 	asm volatile("isb");
 }
 
+__attribute__((noreturn)) static void
+jump_to_kernel(uint64_t entry, uint64_t boot_args_pa)
+{
+	__asm__ volatile (
+		"msr daifset, #0xf\n"
+		"mrs x2, sctlr_el1\n"
+		"bic x2, x2, #0x1\n"    /* M: MMU off */
+		"bic x2, x2, #0x4\n"    /* C: data cache off */
+		"bic x2, x2, #0x1000\n" /* I: instruction cache off */
+		"msr sctlr_el1, x2\n"
+		"isb\n"
+		"ic iallu\n"
+		"dsb sy\n"
+		"isb\n"
+		"mov x0, %1\n"
+		"br %0\n"
+		: : "r" (entry), "r" (boot_args_pa) : "x0", "x2");
+	__builtin_unreachable();
+}
+
 /* --------------------------- main flow --------------------------- */
 
 /*
@@ -328,14 +348,10 @@ xldr_main(uint64_t fdt_pa)
 			asm volatile("wfe");
 		}
 	}
-
 	/* hand the caches + MMU state over; XNU expects flat, flushed start */
 	cache_flush_all();
 
 	fb_text("ENTERING XNU...", 60, 140, 0xFF00FFFFu, 3);
 
-	typedef void (*xnu_entry_t)(uint64_t);
-	((xnu_entry_t)kern_entry)(ba_base);
-
-	xldr_panic("returned from xnu entry");
+	jump_to_kernel(kern_entry, ba_base);
 }

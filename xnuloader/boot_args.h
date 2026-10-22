@@ -34,7 +34,6 @@ struct boot_args {
 	uint32_t machineType;
 	uint64_t *deviceTreeP;         /* physical address, 8-aligned */
 	uint32_t deviceTreeLength;
-	uint32_t _pad0;
 	char CommandLine[XLDR_BOOT_LINE_LENGTH];
 	uint64_t bootFlags;
 	uint64_t memSizeActual;
