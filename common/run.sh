@@ -11,7 +11,9 @@
 load_device "$1"
 SECS=${2:-$DEFAULT_SECS}
 mkdir -p logs
-[ -f userland/root.apfs ] && [ -f userland/system.apfs ] || die "no images: run common/build.sh $DEVICE first"
+if [ "$DEVICE" != begonia ]; then
+	[ -f userland/root.apfs ] && [ -f userland/system.apfs ] || die "no images: run common/build.sh $DEVICE first"
+fi
 
 case "$KIND" in
 qemu)
@@ -20,10 +22,17 @@ qemu)
 	;;
 phone)
 	command -v fastboot >/dev/null || die "fastboot is not installed"
-	./xl enter || die "could not get the phone into the loader (USB? unlocked bootloader?)"
-	./xl ramdisk userland/system.apfs
-	XL_SECS=$SECS XL_CMDLINE="${XL_CMDLINE:-$BOOTARGS}" ./xl run
-	echo "run: './xl screenshot shot.png' for the screen, './xl reboot' to go back to Android"
+	if [ "$DEVICE" = begonia ]; then
+		IMG="out/begonia-boot.img"
+		[ -f "$IMG" ] || IMG="out/boot.img.real"
+		[ -f "$IMG" ] || die "boot image missing: run ./common/build.sh begonia first"
+		./xl boot "$IMG"
+	else
+		./xl enter || die "could not get the phone into the loader (USB? unlocked bootloader?)"
+		./xl ramdisk userland/system.apfs
+		XL_SECS=$SECS XL_CMDLINE="${XL_CMDLINE:-$BOOTARGS}" ./xl run
+		echo "run: './xl screenshot shot.png' for the screen, './xl reboot' to go back to Android"
+	fi
 	;;
 *) die "unknown KIND=$KIND in common/devices/$DEVICE.conf" ;;
 esac
