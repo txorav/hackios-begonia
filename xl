@@ -138,7 +138,8 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     boot = sub.add_parser("boot", help="fastboot boot a staged image")
-    boot.add_argument("image")
+    boot.add_argument("image", nargs="?", default="out/begonia-boot.img",
+                      help="path to boot.img (default: out/begonia-boot.img)")
     boot.set_defaults(func=cmd_boot)
 
     logs = sub.add_parser("logs", help="stream UART0 serial output")
