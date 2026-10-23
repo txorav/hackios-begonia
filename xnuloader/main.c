@@ -69,6 +69,23 @@ find_payload(uint64_t load_base)
 	return 0;
 }
 
+static void
+delay_seconds(uint32_t sec)
+{
+	uint64_t freq;
+	asm volatile("mrs %0, cntfrq_el0" : "=r"(freq));
+	if (freq == 0) {
+		freq = 13000000ull;
+	}
+	uint64_t target = (uint64_t)sec * freq;
+	uint64_t start, now;
+	asm volatile("mrs %0, cntpct_el0" : "=r"(start));
+	do {
+		wdt_kick();
+		asm volatile("mrs %0, cntpct_el0" : "=r"(now));
+	} while ((now - start) < target);
+}
+
 void
 xldr_panic(const char *why)
 {
@@ -77,7 +94,10 @@ xldr_panic(const char *why)
 	uart_puts("\n");
 	fb_text("XLDR PANIC", 400, 300, 0xFFFF0000u, 4);
 	fb_text(why, 40, 400, 0xFFFF0000u, 2);
+	fb_text("AUTO-REBOOTING IN 10 SECONDS...", 40, 480, 0xFFFFFFFFu, 2);
 	xldr_write_panic_record(why);
+	delay_seconds(10);
+	psci_system_reset();
 	for (;;) {
 		asm volatile("wfe");
 	}
@@ -342,9 +362,11 @@ xldr_main(uint64_t fdt_pa)
 		uart_puts("========================================\n");
 		fb_text("MILESTONE M1: STAGE-2 OK!", 60, 180, 0xFF00FF00u, 3);
 		fb_text("BEGONIA LCD + FDT + WDT VALIDATED", 60, 230, 0xFFFFFFFFu, 2);
-		fb_text("WAITING FOR XNU KERNEL FLASH", 60, 280, 0xFFFFFF00u, 2);
+		fb_text("AUTO-REBOOTING IN 10 SECONDS...", 60, 280, 0xFF00FFFFu, 2);
+		delay_seconds(10);
+		uart_puts("[XLDR] Auto-rebooting to restore system...\n");
+		psci_system_reset();
 		for (;;) {
-			wdt_kick();
 			asm volatile("wfe");
 		}
 	}

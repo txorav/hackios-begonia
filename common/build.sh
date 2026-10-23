@@ -73,7 +73,10 @@ if ! skip boot && [ "$KIND" = phone ]; then
 		if [ -f out/root.apfs ]; then
 			RD_ARG="--ramdisk out/root.apfs"
 		fi
-		python3 mkxnuimg.py --out out/$DEVICE-boot.img --loader "$L" --kernel "$K" $RD_ARG
+		python3 mkxnuimg.py --out out/$DEVICE-boot.img --loader "$L" --kernel "$K" $RD_ARG \
+			--cmdline "$BOOTARGS" \
+			--fb "${FB_WIDTH}x${FB_HEIGHT}x${FB_STRIDE}x${FB_DEPTH}" \
+			--fb-base "$FB_BASE"
 		echo "build: out/$DEVICE-boot.img -- boot it with: fastboot boot out/$DEVICE-boot.img (or ./xl boot out/$DEVICE-boot.img)"
 	else
 		# the UEFI with the loader inside, the way `xl enter` makes it: the loader then brings up its USB link
