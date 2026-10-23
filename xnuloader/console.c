@@ -156,22 +156,21 @@ void
 fb_draw_test_pattern(void)
 {
 	if (!fb_base) { return; }
+	/* Clean solid deep black canvas */
 	fb_clear(0xFF000000u);
-	/* border */
-	fb_fill(0, 0, fb_w, 8, 0xFFFFFFFFu);
-	fb_fill(0, fb_h - 8, fb_w, fb_h, 0xFFFFFFFFu);
-	fb_fill(0, 0, 8, fb_h, 0xFFFFFFFFu);
-	fb_fill(fb_w - 8, 0, fb_w, fb_h, 0xFFFFFFFFu);
-	/* gradient stripes in the middle */
-	for (uint32_t y = 120; y < fb_h - 120; y += 12) {
-		uint32_t v = (y * 8) & 0xFF;
-		fb_fill(40, y, fb_w - 40, y + 6, 0xFF000000u | (v << 8) | ((v * 2) & 0xFF) | (v << 16));
-	}
-	fb_text("HACKIOS XLDR: LK HANDOFF OK, FDT/PAYLOAD PROBE BELOW",
-	       40, 40, 0xFF00FF00u, 3);
+
+	/* Clean solid white border */
+	fb_fill(0, 0, fb_w, 12, 0xFFFFFFFFu);
+	fb_fill(0, fb_h - 12, fb_w, fb_h, 0xFFFFFFFFu);
+	fb_fill(0, 0, 12, fb_h, 0xFFFFFFFFu);
+	fb_fill(fb_w - 12, 0, fb_w, fb_h, 0xFFFFFFFFu);
+
+	/* Solid status card header */
+	fb_fill(30, 30, fb_w - 30, 110, 0xFF182818u);
+	fb_text("HACKIOS BEGONIA - STAGE-2 OK", 50, 55, 0xFF00FF00u, 4);
 }
 
-/* ---------------- MediaTek MT6785 TOPRGU Watchdog ---------------- */
+/* ---------------- MediaTek MT6785 TOPRGU Watchdog & Reset ---------------- */
 
 void
 wdt_kick(void)
@@ -189,6 +188,28 @@ wdt_disable(void)
 	v |= MTK_WDT_MODE_KEY;
 	v &= ~(1u | 8u | 0x40u); /* clear ENABLE, IRQ, DUAL_MODE */
 	*mode = v;
+}
+
+void
+system_reboot_hardware(void)
+{
+	uart_puts("\n[XLDR] Triggering hardware reset...\n");
+
+	/* 1. MTK Toprgu direct software-reset register */
+	volatile uint32_t *swrst = (volatile uint32_t *)MTK_WDT_SWRST;
+	*swrst = MTK_WDT_SWRST_KEY;
+
+	/* 2. Enable watchdog without kicking */
+	volatile uint32_t *mode = (volatile uint32_t *)MTK_WDT_MODE;
+	*mode = MTK_WDT_MODE_KEY | 1u;
+
+	/* 3. Fallback to standard PSCI system reset */
+	extern int64_t psci_system_reset(void);
+	psci_system_reset();
+
+	for (;;) {
+		asm volatile("wfe");
+	}
 }
 
 /* ---------------- persistent ramoops (console-ramoops) ---------------- */

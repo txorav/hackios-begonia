@@ -33,11 +33,14 @@ void fb_draw_test_pattern(void);   /* M1 visual proof: gradient + border + text 
 #define MTK_WDT_BASE        0x10007000ul
 #define MTK_WDT_MODE        (MTK_WDT_BASE + 0x0000)
 #define MTK_WDT_RESTART     (MTK_WDT_BASE + 0x0008)
+#define MTK_WDT_SWRST       (MTK_WDT_BASE + 0x0014)
 #define MTK_WDT_MODE_KEY    0x22000000u
 #define MTK_WDT_RESTART_KEY 0x1971u
+#define MTK_WDT_SWRST_KEY   0x1209u
 
 void wdt_disable(void);
 void wdt_kick(void);
+void system_reboot_hardware(void) __attribute__((noreturn));
 
 /* panic: XLDRPANIC record into persistent ramoops (0x4d05f000 on begonia) */
 void xldr_panic(const char *why) __attribute__((noreturn));   /* see main.c/hal c */

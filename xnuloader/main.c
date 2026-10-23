@@ -72,18 +72,13 @@ find_payload(uint64_t load_base)
 static void
 delay_seconds(uint32_t sec)
 {
-	uint64_t freq;
-	asm volatile("mrs %0, cntfrq_el0" : "=r"(freq));
-	if (freq == 0) {
-		freq = 13000000ull;
+	/* Robust calibrated loop: ~80M loop iterations per second on Cortex-A55 */
+	uint64_t total = (uint64_t)sec * 80000000ull;
+	for (volatile uint64_t i = 0; i < total; i++) {
+		if ((i & 0x01ffffffull) == 0) {
+			wdt_kick();
+		}
 	}
-	uint64_t target = (uint64_t)sec * freq;
-	uint64_t start, now;
-	asm volatile("mrs %0, cntpct_el0" : "=r"(start));
-	do {
-		wdt_kick();
-		asm volatile("mrs %0, cntpct_el0" : "=r"(now));
-	} while ((now - start) < target);
 }
 
 void
@@ -92,15 +87,12 @@ xldr_panic(const char *why)
 	uart_puts("\nXLDR PANIC: ");
 	uart_puts(why);
 	uart_puts("\n");
-	fb_text("XLDR PANIC", 400, 300, 0xFFFF0000u, 4);
-	fb_text(why, 40, 400, 0xFFFF0000u, 2);
-	fb_text("AUTO-REBOOTING IN 10 SECONDS...", 40, 480, 0xFFFFFFFFu, 2);
+	fb_text("XLDR PANIC", 60, 300, 0xFFFF0000u, 4);
+	fb_text(why, 60, 360, 0xFFFF0000u, 2);
+	fb_text("AUTO-REBOOTING IN 5 SECONDS...", 60, 420, 0xFFFFFFFFu, 2);
 	xldr_write_panic_record(why);
-	delay_seconds(10);
-	psci_system_reset();
-	for (;;) {
-		asm volatile("wfe");
-	}
+	delay_seconds(5);
+	system_reboot_hardware();
 }
 
 /* Clean+invalidate the whole D-cache by set/way, then I-cache. */
@@ -362,13 +354,10 @@ xldr_main(uint64_t fdt_pa)
 		uart_puts("========================================\n");
 		fb_text("MILESTONE M1: STAGE-2 OK!", 60, 180, 0xFF00FF00u, 3);
 		fb_text("BEGONIA LCD + FDT + WDT VALIDATED", 60, 230, 0xFFFFFFFFu, 2);
-		fb_text("AUTO-REBOOTING IN 10 SECONDS...", 60, 280, 0xFF00FFFFu, 2);
-		delay_seconds(10);
+		fb_text("AUTO-REBOOTING IN 5 SECONDS...", 60, 280, 0xFF00FFFFu, 2);
+		delay_seconds(5);
 		uart_puts("[XLDR] Auto-rebooting to restore system...\n");
-		psci_system_reset();
-		for (;;) {
-			asm volatile("wfe");
-		}
+		system_reboot_hardware();
 	}
 	/* hand the caches + MMU state over; XNU expects flat, flushed start */
 	cache_flush_all();
