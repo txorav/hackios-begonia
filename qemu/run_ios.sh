@@ -35,13 +35,13 @@ echo "== [3/3] Booting XNU under QEMU -M virt (press ^C to stop) =="
 TIMEOUT="${1:-0}"
 if [ "$TIMEOUT" -gt 0 ]; then
     exec timeout "$TIMEOUT" qemu-system-aarch64 \
-        -M virt -cpu cortex-a57 -smp 1 -m 2048 \
+        -M virt,gic-version=3 -cpu cortex-a76 -smp 1 -m 2048 \
         -nic none \
         -kernel build/boot-payload.img \
         -display none -serial stdio
 else
     exec qemu-system-aarch64 \
-        -M virt -cpu cortex-a57 -smp 1 -m 2048 \
+        -M virt,gic-version=3 -cpu cortex-a76 -smp 1 -m 2048 \
         -nic none \
         -kernel build/boot-payload.img \
         -display none -serial stdio

@@ -1,0 +1,14 @@
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = AcpiTables
+  FILE_GUID                      = 3E6710DB-5D25-4D1C-A564-CB8220E1D0FB
+  MODULE_TYPE                    = USER_DEFINED
+  VERSION_STRING                 = 1.0
+
+[Binaries]
+  ASL|Common/SSDT.aml
+  ASL|MT6768/APIC.UniCore.aml
+  ASL|MT6768/DBG2.aml
+  ASL|MT6768/DSDT_Minimal.aml
+  ASL|MT6768/FACP.aml
+  ASL|MT6768/GTDT.aml

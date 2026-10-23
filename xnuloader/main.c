@@ -25,7 +25,7 @@
 #define KERNEL_LOAD_BASE   0x40200000ul           /* kernelcache destination  */
 #define KERNEL_LOAD_ALIGN  0x200000ull            /* 2 MiB (L2-block rule)    */
 #define DRAM_BASE_DEFAULT  0x40000000ul
-#define MEM_SIZE_DEFAULT   0xC0000000ull          /* 4 GiB Device             */
+#define MEM_SIZE_DEFAULT   0x80000000ull          /* 2 GiB Safe Bootstrap     */
 #define VIRT_BASE_KOFF     0xffffffe000000000ull  /* xnu VM_MIN_KERNELABS    */
 
 #define MAX_CMDLINE        608
@@ -42,7 +42,7 @@ uint8_t xldr_entry_stack[0x4000];
 
 static char g_cmdline[MAX_CMDLINE];
 static const char default_cmdline[] =
-	"serial=3 -v debug=0x8e keepsyms=1 rd=md0 rootdev=md0 "
+	"-v debug=0x8e keepsyms=1 rd=md0 rootdev=md0 "
 	"cs_enforcement_disable=1 amfi_get_out_of_my_way=0x1 wpdebug=1";
 
 static uint64_t align_up(uint64_t v, uint64_t a) { return (v + a - 1) & ~(a - 1); }
@@ -220,11 +220,11 @@ xldr_main(uint64_t fdt_pa)
 		pm = (const volatile struct payload_manifest *)0x50000000ull;
 	}
 
-	/* Determine active framebuffer: manifest > FDT atag,videolfb > default */
-	uint64_t active_fb = pm->fb_base ? pm->fb_base : (fb_base_dyn ? fb_base_dyn : FB_BASE_DEFAULT);
+	/* Determine active framebuffer: dynamic FDT atag,videolfb > manifest > default */
+	uint64_t active_fb = fb_base_dyn ? fb_base_dyn : (pm->fb_base ? pm->fb_base : FB_BASE_DEFAULT);
 	uint32_t active_w  = pm->fb_width  ? pm->fb_width  : FB_WIDTH_DEFAULT;
 	uint32_t active_h  = pm->fb_height ? pm->fb_height : FB_HEIGHT_DEFAULT;
-	uint32_t active_st = pm->fb_stride ? pm->fb_stride : FB_STRIDE_DEFAULT;
+	uint32_t active_st = (pm->fb_stride && pm->fb_stride != 4352) ? pm->fb_stride : FB_STRIDE_DEFAULT;
 
 	uart_puts("FB base: ");
 	uart_puthex(active_fb);
@@ -232,7 +232,6 @@ xldr_main(uint64_t fdt_pa)
 
 	fb_init(active_fb, active_w, active_h, active_st);
 	fb_draw_test_pattern();
-	fb_text("HACKIOS XLDR: LK HANDOFF OK", 60, 60, 0xFF00FF00u, 3);
 
 	const volatile struct payload_section *pk = &pm->sect[SECT_KERNEL];
 	const volatile struct payload_section *pr = &pm->sect[SECT_RAMDISK];
@@ -268,8 +267,34 @@ xldr_main(uint64_t fdt_pa)
 	/* ---- overrides; fixed layout so ADT is correct at build ---- */
 	struct adt_overrides ov;
 	memset(&ov, 0, sizeof(ov));
+#ifdef XLDR_UART_PL011
+	ov.is_qemu = 1;
+#else
+	if (fdtrc == FDT_E_OK) {
+		const uint8_t *compat = 0;
+		int clen = 0;
+		if (fdt_get_prop(0, "compatible", &compat, &clen) == FDT_E_OK && compat) {
+			if (strstr((const char *)compat, "qemu") || strstr((const char *)compat, "dummy-virt")) {
+				ov.is_qemu = 1;
+			}
+		}
+	}
+#endif
+
+	/*
+	 * Capping early memory to 2048 MiB (0x80000000ULL):
+	 * In XNU start.s, cold boot allocates L2 bootstrap page tables for ba.memSize
+	 * (lsr x5, x24, #ARM_TT_L2_SHIFT). On 6 GB / 8 GB devices, mapping the full
+	 * DRAM requires 16+ L2 pages, which overflows XNU's fixed bootstrap_pagetables
+	 * buffer (sized for 8 pages / 2 GB max), corrupting exception vectors and freezing
+	 * the CPU immediately upon jump_to_kernel.
+	 * Upstream hackios-xnu-kernel caps early ba.memSize to 0x80000000ULL, while
+	 * passing the full physical DRAM size in ba.memSizeActual.
+	 */
+	uint64_t early_mem_size = (mem_size > 0x80000000ull) ? 0x80000000ull : mem_size;
+
 	ov.phys_base = DRAM_BASE_DEFAULT;
-	ov.phys_size = mem_size;
+	ov.phys_size = early_mem_size;
 	ov.fb_base   = active_fb;
 	ov.fb_width  = active_w;
 	ov.fb_height = active_h;
@@ -312,18 +337,23 @@ xldr_main(uint64_t fdt_pa)
 	memset(&ba, 0, sizeof(ba));
 	ba.Revision = KBOOT_ARGS_REVISION;
 	ba.Version  = KBOOT_ARGS_VERSION;
-	ba.virtBase = VIRT_BASE_KOFF + (uint64_t)(ov.phys_base);
+	ba.virtBase = (kern_entry != 0) ? KERNEL_VIRT_BASE : (VIRT_BASE_KOFF + (uint64_t)(ov.phys_base));
 	ba.physBase = ov.phys_base;
-	ba.memSize  = mem_size;
+	ba.memSize  = early_mem_size;
 	ba.topOfKernelData = topo;
-	ba.Video.v_baseAddr = ov.fb_base;
-	ba.Video.v_display  = 0;
+	ba.Video.v_baseAddr = ov.fb_base | 1u;   /* b0=1 indicates physical address to XNU */
+	ba.Video.v_display  = 1;                /* kPEGraphicsMode: enables graphical console */
 	ba.Video.v_rowBytes = ov.fb_stride;
 	ba.Video.v_width    = ov.fb_width;
 	ba.Video.v_height   = ov.fb_height;
 	ba.Video.v_depth    = ov.fb_depth;
 	ba.machineType      = 0;
-	ba.deviceTreeP      = (uint64_t *)adt_base;   /* physical (PE_init uses raw) */
+	if (kern_entry != 0) {
+		uint64_t slide = ov.phys_base - KERNEL_VIRT_BASE;
+		ba.deviceTreeP = (uint64_t *)(adt_base - slide);
+	} else {
+		ba.deviceTreeP = (uint64_t *)adt_base;   /* physical (placeholder test) */
+	}
 	ba.deviceTreeLength = (uint32_t)adt_sz;
 	ba.bootFlags        = 0;
 	ba.memSizeActual    = mem_size;
@@ -359,10 +389,18 @@ xldr_main(uint64_t fdt_pa)
 		uart_puts("[XLDR] Auto-rebooting to restore system...\n");
 		system_reboot_hardware();
 	}
-	/* hand the caches + MMU state over; XNU expects flat, flushed start */
-	cache_flush_all();
 
-	fb_text("ENTERING XNU...", 60, 140, 0xFF00FFFFu, 3);
+	/* Distinct non-overlapping status cards */
+	fb_fill(30, 150, active_w - 30, 230, 0xFF101828u); /* dark blue card */
+	fb_text("STAGE-2 LOADER: LK HANDOFF OK", 60, 165, 0xFF00FFFFu, 3);
+	fb_text("DRAM: 8GB / EARLY L2: 2GB / STRIDE: 4320", 60, 200, 0xFFAAAAAAu, 2);
+
+	fb_fill(30, 250, active_w - 30, 330, 0xFF281420u); /* dark magenta card */
+	fb_text("ENTERING REAL XNU KERNEL...", 60, 265, 0xFFFF00FFu, 3);
+	fb_text("HANDOFF TO MACH-O ENTRY POINT", 60, 300, 0xFF00FF00u, 2);
+
+	/* Hand all framebuffer pixel writes from D-cache into physical DRAM */
+	cache_flush_all();
 
 	jump_to_kernel(kern_entry, ba_base);
 }

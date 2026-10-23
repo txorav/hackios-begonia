@@ -1,0 +1,20 @@
+diff --git a/UefiCpuPkg/Library/ArmMmuLib/AArch64/ArmMmuLibReplaceEntry.S b/UefiCpuPkg/Library/ArmMmuLib/AArch64/ArmMmuLibReplaceEntry.S
+index 9720414..5a42825 100644
+--- a/UefiCpuPkg/Library/ArmMmuLib/AArch64/ArmMmuLibReplaceEntry.S
++++ b/UefiCpuPkg/Library/ArmMmuLib/AArch64/ArmMmuLibReplaceEntry.S
+@@ -97,6 +97,7 @@ ASM_FUNC_ALIGN(ArmReplaceLiveTranslationEntry, 0x200)
+ ASM_GLOBAL ASM_PFX(ArmReplaceLiveTranslationEntrySize)
+ 
+ ASM_PFX(ArmReplaceLiveTranslationEntrySize):
++#ifdef __ELF__
+   .long   . - ArmReplaceLiveTranslationEntry
+ 
+   // Double check that we did not overrun the assumed maximum size or cross a
+@@ -104,3 +105,7 @@ ASM_PFX(ArmReplaceLiveTranslationEntrySize):
+   // the page size).
+   .balign 0x200
+   .org    ArmReplaceLiveTranslationEntry + 0x200
++#else
++  .long   0x200
++  .balign 0x200
++#endif

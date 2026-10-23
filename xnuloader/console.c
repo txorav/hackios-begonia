@@ -93,7 +93,7 @@ fb_init(uint64_t base, uint32_t width, uint32_t height, uint32_t stride)
 	if (stride) { fb_stride = stride; }
 }
 
-static void
+void
 fb_fill(uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1, uint32_t rgb)
 {
 	if (!fb_base) { return; }
@@ -166,8 +166,9 @@ fb_draw_test_pattern(void)
 	fb_fill(fb_w - 12, 0, fb_w, fb_h, 0xFFFFFFFFu);
 
 	/* Solid status card header */
-	fb_fill(30, 30, fb_w - 30, 110, 0xFF182818u);
-	fb_text("HACKIOS BEGONIA - STAGE-2 OK", 50, 55, 0xFF00FF00u, 4);
+	fb_fill(30, 30, fb_w - 30, 130, 0xFF142414u);
+	fb_text("HACKIOS BEGONIA - STAGE-2 OK", 60, 50, 0xFF00FF00u, 4);
+	fb_text("HELIO G90T (MT6785) - DARWIN 22.5.0", 60, 95, 0xFFFFFFFFu, 2);
 }
 
 /* ---------------- MediaTek MT6785 TOPRGU Watchdog & Reset ---------------- */
@@ -191,19 +192,52 @@ wdt_disable(void)
 }
 
 void
+wdt_arm(uint32_t seconds)
+{
+	if (seconds > 31) {
+		seconds = 31;
+	}
+	if (seconds == 0) {
+		seconds = 1;
+	}
+	/*
+	 * MTK TOPRGU WDT_LENGTH:
+	 * Resolution: 512 ticks / 32768 Hz = 1/64 s (~15.625 ms) per tick.
+	 * Length field is bits [15:5]. Key is bits [3:0] = 0x8.
+	 */
+	uint32_t ticks = seconds * 64u;
+	if (ticks > 0x7FFu) {
+		ticks = 0x7FFu;
+	}
+	volatile uint32_t *length = (volatile uint32_t *)MTK_WDT_LENGTH;
+	*length = (ticks << 5) | MTK_WDT_LENGTH_KEY;
+
+	wdt_kick();
+
+	/* Enable watchdog: bit 0 (EN) + bit 2 (EXRST to MT6359 PMIC) with key 0x22000000 */
+	volatile uint32_t *mode = (volatile uint32_t *)MTK_WDT_MODE;
+	*mode = MTK_WDT_MODE_KEY | (1u << 0) | (1u << 2);
+}
+
+void
 system_reboot_hardware(void)
 {
 	uart_puts("\n[XLDR] Triggering hardware reset...\n");
 
-	/* 1. MTK Toprgu direct software-reset register */
+	/* 1. MTK Toprgu mode: Enable + External PMIC reset */
+	volatile uint32_t *mode = (volatile uint32_t *)MTK_WDT_MODE;
+	*mode = MTK_WDT_MODE_KEY | (1u << 0) | (1u << 2);
+
+	/* 2. Direct software reset trigger */
 	volatile uint32_t *swrst = (volatile uint32_t *)MTK_WDT_SWRST;
 	*swrst = MTK_WDT_SWRST_KEY;
+	*swrst = MTK_WDT_SWRST_KEY;
+	*swrst = MTK_WDT_SWRST_KEY;
 
-	/* 2. Enable watchdog without kicking */
-	volatile uint32_t *mode = (volatile uint32_t *)MTK_WDT_MODE;
-	*mode = MTK_WDT_MODE_KEY | 1u;
+	/* 3. Fast 1-second watchdog hardware timeout fallback with PMIC EXRST */
+	wdt_arm(1);
 
-	/* 3. Fallback to standard PSCI system reset */
+	/* 4. Fallback to standard PSCI system reset */
 	extern int64_t psci_system_reset(void);
 	psci_system_reset();
 

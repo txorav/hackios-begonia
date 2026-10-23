@@ -53,10 +53,19 @@ if ! skip images; then
 		echo "build: using existing out/root.apfs"
 	else
 		echo "build: no ios165/rootfs: creating base APFS root.apfs from prebuilt userland"
-		mkdir -p build/test_apfs/root/bin build/test_apfs/root/lib build/test_apfs/root/etc
-		cp -f prebuilt/userland/init build/test_apfs/root/bin/
+		mkdir -p build/test_apfs/root/bin build/test_apfs/root/sbin build/test_apfs/root/lib build/test_apfs/root/etc build/test_apfs/root/dev build/test_apfs/root/share build/test_apfs/root/private/var build/test_apfs/root/tmp
+		cp -f prebuilt/userland/init build/test_apfs/root/sbin/launchd
+		cp -f prebuilt/userland/init build/test_apfs/root/sbin/init
+		cp -f prebuilt/userland/init build/test_apfs/root/bin/init
+		cp -f prebuilt/userland/child build/test_apfs/root/bin/child 2>/dev/null || true
+		cp -f prebuilt/userland/hello build/test_apfs/root/bin/hello 2>/dev/null || true
 		cp -f prebuilt/userland/libredwood*.dylib build/test_apfs/root/lib/ 2>/dev/null || true
-		echo '#!/bin/init' > build/test_apfs/root/etc/rc
+		for prog in cpu_test mg_test net_test surf_test svc_test hello_dyn; do
+			[ -f prebuilt/userland/$prog ] && cp -f prebuilt/userland/$prog build/test_apfs/root/bin/
+		done
+		echo "Darwin on redwood: begonia userland" > build/test_apfs/root/etc/motd
+		python3 -c "import sys; sys.stdout.buffer.write(bytes((i * 31 + (i >> 8)) & 0xff for i in range(300000)))" > build/test_apfs/root/share/pattern.bin
+		echo '/bin/hello' > build/test_apfs/root/etc/rc
 		python3 tools/apfs/mkapfs.py -z -o out/root.apfs redwood=build/test_apfs/root | tail -1
 	fi
 fi

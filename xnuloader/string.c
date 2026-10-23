@@ -97,3 +97,25 @@ strchr(const char *s, int c)
 	}
 	return c ? (char *)0 : (char *)s;
 }
+
+char *
+strstr(const char *haystack, const char *needle)
+{
+	if (!*needle) {
+		return (char *)haystack;
+	}
+	for (; *haystack; haystack++) {
+		if (*haystack == *needle) {
+			const char *h = haystack;
+			const char *n = needle;
+			while (*h && *n && *h == *n) {
+				h++;
+				n++;
+			}
+			if (!*n) {
+				return (char *)haystack;
+			}
+		}
+	}
+	return (char *)0;
+}

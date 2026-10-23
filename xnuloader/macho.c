@@ -78,7 +78,9 @@ macho_load_one(const volatile uint8_t *mh, uint64_t phys_base,
 	}
 
 	/* pass 2: copy + zero-fill + collect entry */
-	uint64_t load_delta = phys_base - cls_base;
+	int is_xnu = (cls_base >= 0xfffffff000000000ULL);
+	uint64_t actual_phys_base = is_xnu ? (phys_base & ~0x0FFFFFFFull) : phys_base;
+	uint64_t load_delta = is_xnu ? (actual_phys_base - KERNEL_VIRT_BASE) : (phys_base - cls_base);
 	uint64_t entry = 0;
 	int entry_found = 0;
 
@@ -154,6 +156,12 @@ macho_load(uint64_t mh_phys, uint64_t load_base, uint64_t *entry_out)
 		return rc != 0 ? rc : -5;
 	}
 	*entry_out = entry;
-	g_macho_top = (cls_top - cls_base) + load_base;
+	if (cls_base >= 0xfffffff000000000ULL) {
+		uint64_t actual_phys_base = load_base & ~0x0FFFFFFFull;
+		uint64_t slide = actual_phys_base - KERNEL_VIRT_BASE;
+		g_macho_top = (cls_top + slide + 0x3FFFull) & ~0x3FFFull;
+	} else {
+		g_macho_top = (cls_top - cls_base) + load_base;
+	}
 	return 0;
 }

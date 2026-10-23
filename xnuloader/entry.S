@@ -54,10 +54,10 @@ xldr_entry_real:
 	mov	w1, #0x1971                 /* MTK_WDT_RESTART_KEY          */
 	str	w1, [x0, #0x08]             /* MTK_WDT_RESTART (kick timer) */
 	ldr	w1, [x0]                    /* MTK_WDT_MODE                 */
+	mov	w2, #0x49                   /* bit 0 (EN) | 3 (IRQ) | 6 (DUAL) */
+	bic	w1, w1, w2                  /* clear watchdog enable/irq/dual bits */
 	mov	w2, #0x22000000             /* MTK_WDT_MODE_KEY             */
 	orr	w1, w1, w2
-	mov	w2, #0xFFB6                 /* clear bit 0 (EN), 3 (IRQ), 6 (DUAL) */
-	and	w1, w1, w2
 	str	w1, [x0]                    /* disable MTK hardware watchdog */
 
 	/* --- flatten EL2 -> EL1 --- */

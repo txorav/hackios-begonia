@@ -18,8 +18,9 @@
 #include <stdint.h>
 
 #define ADT_MAX_NODES      48
-#define ADT_MAX_PROPS      16
-#define ADT_MAX_CHILDREN   12
+#define ADT_MAX_CHILDREN   16
+#define ADT_MAX_NODE_PROPS 96
+#define ADT_TOTAL_PROPS    384
 
 typedef void *adt_node_t;    /* opaque builder handle */
 
@@ -43,6 +44,7 @@ struct adt_overrides {
 	/* chosen memory-map (DeviceTree buffer, RAMDisk, all phys) */
 	uint64_t mm_dt_addr, mm_dt_size;
 	uint64_t mm_rd_addr, mm_rd_size;
+	int      is_qemu;
 };
 
 int adt_build(const struct adt_overrides *o);   /* builds template in RAM */

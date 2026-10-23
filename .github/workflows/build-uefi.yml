@@ -1,0 +1,126 @@
+name: Build Begonia UEFI (Mu-Silicium)
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'uefi-begonia/**'
+      - '.github/workflows/build-uefi.yml'
+  workflow_dispatch:
+
+jobs:
+  build-uefi:
+    name: Build Xiaomi Redmi Note 8 Pro (begonia / MT6785) UEFI
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: false
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          git \
+          build-essential \
+          python3 \
+          python3-pip \
+          python3-venv \
+          nasm \
+          iasl \
+          gcc-aarch64-linux-gnu \
+          binutils-aarch64-linux-gnu \
+          uuid-dev \
+          lld \
+          clang \
+          llvm \
+          curl \
+          wget \
+          unzip \
+          cpio
+
+    - name: Clone Mu-Silicium
+      run: |
+        git clone --depth 1 https://github.com/Project-Silicium/Mu-Silicium.git Mu-Silicium
+        cd Mu-Silicium
+        git submodule update --init --recursive
+
+    - name: Install Python dependencies
+      working-directory: Mu-Silicium
+      run: |
+        python3 -m pip install --upgrade pip
+        pip3 install -r pip-requirements.txt
+
+    - name: Pre-download external dependencies & build BaseTools
+      working-directory: Mu-Silicium
+      run: |
+        # Setup nasm extdep
+        mkdir -p Mu_Basecore/BaseTools/Bin/mu_nasm_extdep/Linux-x86
+        mkdir -p Mu_Basecore/BaseTools/Bin/mu_nasm_extdep/Linux-x86-64
+        ln -sf /usr/bin/nasm Mu_Basecore/BaseTools/Bin/mu_nasm_extdep/Linux-x86/nasm
+        ln -sf /usr/bin/nasm Mu_Basecore/BaseTools/Bin/mu_nasm_extdep/Linux-x86-64/nasm
+        echo "version: 20016.1.1" > Mu_Basecore/BaseTools/Bin/mu_nasm_extdep/extdep_state.yaml
+
+        # Download onecrypto
+        mkdir -p Mu_Basecore/CryptoPkg/Binaries/onecrypto-bin_extdep
+        cd Mu_Basecore/CryptoPkg/Binaries/onecrypto-bin_extdep
+        wget -q https://github.com/microsoft/mu_crypto_release/releases/download/v1.1.2-OneCrypto/OneCrypto-Accelerated.zip -O onecrypto.zip
+        unzip -q -o onecrypto.zip
+        echo "version: 1.1.2" > extdep_state.yaml
+        cd ../../../..
+
+        # Build BaseTools from source
+        cd Mu_Basecore/BaseTools
+        make -j$(nproc)
+        cd ../..
+
+    - name: Apply Clang / EDK2 compatibility patches
+      run: |
+        # Use our updated AsmMacroLib.patch
+        cp uefi-begonia/Resources/MuPatches/AsmMacroLib.patch Mu-Silicium/Resources/MuPatches/AsmMacroLib.patch
+
+        # Apply Base.h and ArmMmuLib patches
+        cd Mu-Silicium/Mu_Basecore
+        git apply --ignore-whitespace ../../uefi-begonia/patches/Base.h.patch || true
+        git apply --ignore-whitespace ../../uefi-begonia/patches/ArmMmuLibReplaceEntry.patch || true
+        cd ../..
+
+        # Suppress unused variable warning in MsdcDxe.c
+        sed -i '114a\  (void)Private;  // Suppress unused variable warning' Mu-Silicium/Silicon/MediaTek/MediaTekPkg/Drivers/MsdcDxe/MsdcDxe.c
+        sed -i '168a\  (void)Private;  // Suppress unused variable warning' Mu-Silicium/Silicon/MediaTek/MediaTekPkg/Drivers/MsdcDxe/MsdcDxe.c
+
+    - name: Copy Begonia UEFI packages into Mu-Silicium
+      run: |
+        cp -r uefi-begonia/Silicon/MediaTek/MT6785Pkg Mu-Silicium/Silicon/MediaTek/
+        cp -r uefi-begonia/Platforms/Xiaomi/begoniaPkg Mu-Silicium/Platforms/Xiaomi/
+        cp uefi-begonia/Resources/Configs/begonia.toml Mu-Silicium/Resources/Configs/
+        cp -r uefi-begonia/Silicium-ACPI/Platforms/Xiaomi/begonia Mu-Silicium/Silicium-ACPI/Platforms/Xiaomi/
+        cp uefi-begonia/Resources/DTBs/begonia.dtb Mu-Silicium/Resources/DTBs/begonia.dtb
+
+    - name: Build Begonia UEFI firmware
+      working-directory: Mu-Silicium
+      run: |
+        python3 build_uefi.py -d begonia -r RELEASE
+
+    - name: Prepare build artifacts
+      if: always()
+      run: |
+        mkdir -p artifacts
+        find Mu-Silicium -name "Mu-begonia*.img" -exec cp {} artifacts/ \; || true
+        find Mu-Silicium/Build -name "SILICIUM_UEFI.fd" -exec cp {} artifacts/ \; || true
+        find Mu-Silicium/Build -name "BUILDLOG_*.txt" -exec cp {} artifacts/ \; || true
+        ls -la artifacts/
+
+    - name: Upload Begonia UEFI Boot Image
+      uses: actions/upload-artifact@v4
+      with:
+        name: begonia-uefi-boot-image
+        path: artifacts/
+        if-no-files-found: error

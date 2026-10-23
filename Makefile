@@ -77,8 +77,8 @@ boot.img: .init
 	  $(PYTHON) tools/mk_placeholder_kernel.py $(BUILD)/placeholder.macho; \
 	  $(PYTHON) mkxnuimg.py --out $(OUT)/boot.img.m1 \
 	     --loader $(OUT)/xnuloader.bin --kernel $(BUILD)/placeholder.macho \
-	     --fb 1080x2340x4352x32 --fb-base 0x7e605000 \
-	     --cmdline "serial=3 -v debug=0x8e keepsyms=1 rd=md0"; \
+	     --fb 1080x2340x4320x32 --fb-base 0x7e605000 \
+	     --cmdline "serial=3 -v debug=0x10008e keepsyms=1 rd=md0"; \
 	fi
 
 # ---- 5b. host unit tests & begonia contract evaluation ------------------

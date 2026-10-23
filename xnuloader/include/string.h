@@ -12,5 +12,6 @@ size_t   strlen(const char *s);
 int      strcmp(const char *a, const char *b);
 int      strncmp(const char *a, const char *b, size_t n);
 char    *strchr(const char *s, int c);
+char    *strstr(const char *haystack, const char *needle);
 
 #endif /* _XLDR_STRING_H_ */

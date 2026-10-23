@@ -1,0 +1,13 @@
+diff --git a/MdePkg/Include/Base.h b/MdePkg/Include/Base.h
+index 92499bd..aaa14e4 100644
+--- a/MdePkg/Include/Base.h
++++ b/MdePkg/Include/Base.h
+@@ -594,7 +594,7 @@ typedef struct {
+ 
+ #define VA_START(Marker, Parameter)  (Marker).GrTop = (Marker).VrTop = NULL, \
+                                      (Marker).GrOffs = (Marker).VrOffs = 0,  \
+-                                     __va_start (&(Marker).Stack, &Parameter, _INT_SIZE_OF (Parameter), __alignof (Parameter), &Parameter)
++                                     __va_start (&(Marker).Stack, (const char *)(const void *)&Parameter, _INT_SIZE_OF (Parameter), __alignof (Parameter), (const char *)(const void *)&Parameter)
+ #define VA_STACK_ARG(Marker, TYPE)   (((Marker).Stack += _INT_SIZE_OF (TYPE) + ((-(INTN)(Marker).Stack) & (sizeof(TYPE) - 1))) - _INT_SIZE_OF (TYPE))
+ #define VA_ARG(Marker, TYPE)         (*(TYPE *) (((Marker).GrOffs += _INT_SIZE_OF (TYPE)) <= 0 \
+                                      ? &(Marker).GrTop[(Marker).GrOffs - _INT_SIZE_OF (TYPE)] \

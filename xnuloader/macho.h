@@ -61,6 +61,9 @@ struct thread_command {     /* LC_UNIXTHREAD (arm64): ARM_THREAD_STATE64 */
 #define ARM64_THREAD_FLAVOR   6
 #define ARM64_THREAD_REG_PC   32
 
+#define KERNEL_VIRT_BASE      0xFFFFFFF004000000ULL
+#define KERNEL_LINK_OFFSET    0x03000000ULL
+
 /* load a kernelcache: mh at mh_phys; segments land relative to load_base. */
 int      macho_load(uint64_t mh_phys, uint64_t load_base, uint64_t *entry_out);
 extern uint64_t g_macho_top;   /* physical end of the relocated kernel image */

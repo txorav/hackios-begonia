@@ -1,0 +1,40 @@
+diff --git a/MdePkg/Include/AArch64/AsmMacroLib.h b/MdePkg/Include/AArch64/AsmMacroLib.h
+index ccd8343..cdcce0e 100644
+--- a/MdePkg/Include/AArch64/AsmMacroLib.h
++++ b/MdePkg/Include/AArch64/AsmMacroLib.h
+@@ -22,25 +22,31 @@
+         cbnz   SAFE_XREG, 1f        ;\
+         b      .                    ;// We should never get here
+ 
++#ifdef __ELF__
++#define _ASM_SECTION(Section)  .section  #Section, "ax"
++#else
++#define _ASM_SECTION(Section)  .section  .text, "xr"
++#endif
++
+ #define _ASM_FUNC(Name, Section)    \
+   .global   Name                  ; \
+-  .section  #Section, "ax"        ; \
++  _ASM_SECTION(Section)           ; \
+   _ASM_TYPE(Name)                 ; \
+   Name:                           ; \
+   AARCH64_BTI(c)
+ 
+ #define _ASM_FUNC_ALIGN(Name, Section, Align)       \
+   .global   Name                                  ; \
+-  .section  #Section, "ax"                        ; \
++  _ASM_SECTION(Section)                           ; \
+   _ASM_TYPE(Name)                                 ; \
+   .balign   Align                                 ; \
+   Name:                                           ; \
+   AARCH64_BTI(c)
+ 
+-#define ASM_FUNC(Name)  _ASM_FUNC(ASM_PFX(Name), .text. ## Name)
++#define ASM_FUNC(Name)  _ASM_FUNC(ASM_PFX(Name), .text)
+ 
+ #define ASM_FUNC_ALIGN(Name, Align)  \
+-  _ASM_FUNC_ALIGN(ASM_PFX(Name), .text. ## Name, Align)
++  _ASM_FUNC_ALIGN(ASM_PFX(Name), .text, Align)
+ 
+ #define MOV32(Reg, Val)                             \
+   movz      Reg, ((Val) >> 16) & 0xffff, lsl #16  ; \
