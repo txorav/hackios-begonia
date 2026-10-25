@@ -1,0 +1,58 @@
+diff --git a/Silicon/MediaTek/MediaTekPkg/Drivers/RamDiskDxe/7zip/C/7zTypes.h b/Silicon/MediaTek/MediaTekPkg/Drivers/RamDiskDxe/7zip/C/7zTypes.h
+index 5d3c748..cc7c47c 100644
+--- a/Silicon/MediaTek/MediaTekPkg/Drivers/RamDiskDxe/7zip/C/7zTypes.h
++++ b/Silicon/MediaTek/MediaTekPkg/Drivers/RamDiskDxe/7zip/C/7zTypes.h
+@@ -6,8 +6,22 @@
+ 
+ #ifdef _WIN32
+ /* #include <windows.h> */
+-#else
+-#include <errno.h>
++#endif
++
++#ifndef EINVAL
++#define EINVAL 22
++#endif
++#ifndef EEXIST
++#define EEXIST 17
++#endif
++#ifndef ENOENT
++#define ENOENT 2
++#endif
++#ifndef ENOSPC
++#define ENOSPC 28
++#endif
++#ifndef EBADF
++#define EBADF 9
+ #endif
+ 
+ #include <stddef.h>
+@@ -226,9 +240,8 @@ typedef __int64 Int64;
+ typedef unsigned __int64 UInt64;
+ #else
+ #if defined(__clang__) || defined(__GNUC__)
+-#include <stdint.h>
+-typedef int64_t Int64;
+-typedef uint64_t UInt64;
++typedef long long int Int64;
++typedef unsigned long long int UInt64;
+ #else
+ typedef long long int Int64;
+ typedef unsigned long long int UInt64;
+diff --git a/Silicon/MediaTek/MediaTekPkg/Drivers/RamDiskDxe/7zip/C/LzmaDec.c b/Silicon/MediaTek/MediaTekPkg/Drivers/RamDiskDxe/7zip/C/LzmaDec.c
+index b6bcd50..2b73a49 100644
+--- a/Silicon/MediaTek/MediaTekPkg/Drivers/RamDiskDxe/7zip/C/LzmaDec.c
++++ b/Silicon/MediaTek/MediaTekPkg/Drivers/RamDiskDxe/7zip/C/LzmaDec.c
+@@ -3,7 +3,11 @@
+ 
+ #include "Precomp.h"
+ 
+-#include <string.h>
++#include <Base.h>
++#include <Library/BaseMemoryLib.h>
++#ifndef memcpy
++#define memcpy(dest, src, n) CopyMem(dest, src, n)
++#endif
+ 
+ /* #include "CpuArch.h" */
+ #include "LzmaDec.h"

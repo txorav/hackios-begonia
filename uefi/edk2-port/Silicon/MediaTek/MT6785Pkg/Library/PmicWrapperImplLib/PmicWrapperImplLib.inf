@@ -1,0 +1,14 @@
+[Defines]
+  INF_VERSION                    = 1.25
+  BASE_NAME                      = PmicWrapperImplLib
+  FILE_GUID                      = c4151ae4-cdde-409c-833e-96fda41ee57f
+  MODULE_TYPE                    = SEC
+  VERSION_STRING                 = 1.0
+  LIBRARY_CLASS                  = PmicWrapperImplLib
+
+[Sources.common]
+  PmicWrapperImplLib.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MediaTekPkg/MediaTekPkg.dec

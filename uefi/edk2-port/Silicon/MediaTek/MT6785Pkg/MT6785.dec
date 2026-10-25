@@ -1,0 +1,11 @@
+[Defines]
+  DEC_SPECIFICATION              = 0x0001001A
+  PACKAGE_NAME                   = MT6785Pkg
+  PACKAGE_GUID                   = 8E6785F0-58A7-4F45-8728-DC1690309385
+  PACKAGE_VERSION                = 1.0
+
+[Includes]
+  Include
+
+[Guids]
+  gMT6785PkgTokenSpaceGuid        = { 0x8e6785f0, 0xb52c, 0x4b4c, { 0xba, 0xd8, 0xb5, 0x8a, 0x99, 0x88, 0xf2, 0x85 } }

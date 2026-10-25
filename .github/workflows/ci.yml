@@ -25,6 +25,11 @@ jobs:
           set -e
           for f in $(git ls-files '*.sh'); do bash -n "$f"; done
           echo "all shell scripts parse"
+      - name: Install aarch64 cross toolchain for contract tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
       - name: Begonia hardware contract & boot image evaluation
         run: |
           mkdir -p build out
