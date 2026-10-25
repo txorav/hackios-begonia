@@ -176,8 +176,8 @@ class TestAndroidBootImgPacking(unittest.TestCase):
         payload = gzip.decompress(gz_data)
         self.assertGreater(len(payload), 0x10000, "Payload must be at least 64 KiB")
 
-        # Scan for XLDRPAY1 magic within payload
-        manifest_offset = payload.find(PAYLOAD_MAGIC)
+        # Scan for XLDRPAY1 manifest header within payload (rfind avoids loader string constants)
+        manifest_offset = payload.rfind(PAYLOAD_MAGIC)
         self.assertNotEqual(manifest_offset, -1, "XLDRPAY1 manifest magic not found in decompressed payload")
         self.assertEqual(manifest_offset % 0x10000, 0, "Payload manifest must be 64 KiB page-aligned")
 
